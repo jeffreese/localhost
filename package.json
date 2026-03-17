@@ -10,7 +10,7 @@
     "build": "vite build && tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "prepare": "husky"
   },
@@ -34,5 +34,8 @@
   },
   "lint-staged": {
     "*.{ts,js,json,css,html}": "biome check --write"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@biomejs/biome", "esbuild"]
   }
 }
