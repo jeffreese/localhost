@@ -3,6 +3,9 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [tailwindcss()],
+  test: {
+    env: { NODE_ENV: 'test' },
+  },
   server: {
     proxy: {
       '/api': 'http://localhost:7770',

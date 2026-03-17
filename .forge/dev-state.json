@@ -1,5 +1,7 @@
 {
   "status": "idle",
-  "mode": null,
-  "pending": "Start development with /forge:next — first plan is mvp in docs/plans/mvp/"
+  "mode": "all",
+  "currentEpic": null,
+  "currentTask": null,
+  "branch": "feat/project-scaffolding"
 }
