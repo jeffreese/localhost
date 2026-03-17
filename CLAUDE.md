@@ -15,7 +15,7 @@ pnpm test         # Vitest unit/integration tests
 
 | Layer | Choice |
 |-------|--------|
-| Backend | Node.js + Hono (port 7770) |
+| Backend | Node.js + Hono (port 7769) |
 | Frontend | Lit web components + Tailwind CSS |
 | Build | Vite |
 | Package manager | pnpm |
