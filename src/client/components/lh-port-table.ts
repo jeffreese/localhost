@@ -2,6 +2,11 @@ import type { Project } from '@shared/types'
 import { LitElement, html } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 
+interface PortEntry {
+  port: number
+  projectName: string
+}
+
 @customElement('lh-port-table')
 export class LhPortTable extends LitElement {
   @property({ type: Array }) projects: Project[] = []
@@ -10,15 +15,19 @@ export class LhPortTable extends LitElement {
     return this
   }
 
-  private get portProjects(): Project[] {
-    return this.projects
-      .filter((p) => p.port !== null && p.processState !== 'stopped')
-      .sort((a, b) => (a.port ?? 0) - (b.port ?? 0))
+  private get portEntries(): PortEntry[] {
+    const entries: PortEntry[] = []
+    for (const p of this.projects) {
+      for (const l of p.listeners) {
+        entries.push({ port: l.port, projectName: p.name })
+      }
+    }
+    return entries.sort((a, b) => a.port - b.port)
   }
 
   render() {
-    const portProjects = this.portProjects
-    if (portProjects.length === 0) return html``
+    const entries = this.portEntries
+    if (entries.length === 0) return html``
 
     return html`
       <div class="bg-surface-raised border border-border rounded-lg p-md">
@@ -28,22 +37,14 @@ export class LhPortTable extends LitElement {
             <tr class="text-left text-muted text-xs">
               <th class="pb-xs">Port</th>
               <th class="pb-xs">Project</th>
-              <th class="pb-xs">Status</th>
             </tr>
           </thead>
           <tbody>
-            ${portProjects.map(
-              (p) => html`
+            ${entries.map(
+              (e) => html`
                 <tr class="border-t border-border">
-                  <td class="py-xs text-accent font-mono">:${p.port}</td>
-                  <td class="py-xs text-primary">${p.name}</td>
-                  <td class="py-xs">
-                    ${
-                      p.processState === 'port-conflict'
-                        ? html`<span class="text-warning">Conflict</span>`
-                        : html`<span class="text-success">Running</span>`
-                    }
-                  </td>
+                  <td class="py-xs text-accent font-mono">:${e.port}</td>
+                  <td class="py-xs text-primary">${e.projectName}</td>
                 </tr>
               `,
             )}

@@ -1,12 +1,14 @@
-# PID Verification Required — Two-Step Reconciliation
+# Listener Enumeration — OS as Source of Truth
 
-Never mark a project as "running" based on port check alone. On startup, verify:
+Process state is determined by enumerating OS TCP listeners and matching their working directories to known project paths. Never rely on stored PIDs for determining running state.
 
-1. Stored PID is alive (`process.kill(pid, 0)`)
-2. PID owns the expected port (`lsof -i :port -t`)
+Detection flow:
+1. `lsof -iTCP -sTCP:LISTEN` → all listening processes with PIDs
+2. `lsof -p PID -d cwd` → resolve each listener's working directory
+3. Match cwd to project paths → attribute listeners to projects
 
-If `lsof` is unavailable, fall back to port-only check with a logged warning. Stale PIDs must be cleared from config when the process is confirmed dead.
+A project is "running" if it has one or more matched listeners. Projects can have multiple listeners (e.g., backend + frontend dev servers).
 
-Three valid states: running (PID alive + owns port), stopped (PID dead + port free), port conflict (port occupied by unknown process).
+`config.pids` is only used for process management (stopping processes localhost spawned), never for detection.
 
 **Source:** ADR-006

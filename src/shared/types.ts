@@ -1,11 +1,17 @@
 /** Package manager detected from lock files */
 export type PackageManager = 'npm' | 'pnpm' | 'yarn'
 
-/** Process state after PID/port reconciliation */
-export type ProcessState = 'running' | 'stopped' | 'port-conflict'
+/** Process state derived from listener enumeration */
+export type ProcessState = 'running' | 'stopped'
 
 /** Project visibility */
 export type Visibility = 'visible' | 'hidden' | 'ignored'
+
+/** A TCP listener matched to a project by working directory */
+export interface Listener {
+  pid: number
+  port: number
+}
 
 /** A discovered project */
 export interface Project {
@@ -16,9 +22,8 @@ export interface Project {
   devScript: string | null
   githubUrl: string | null
   visibility: Visibility
-  port: number | null
+  listeners: Listener[]
   processState: ProcessState
-  pid: number | null
 }
 
 /** Per-project config overrides */

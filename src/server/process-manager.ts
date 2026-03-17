@@ -1,9 +1,9 @@
 import { type ChildProcess, execSync, spawn } from 'node:child_process'
-import type { PackageManager, ProcessState } from '@shared/types'
+import type { Listener, PackageManager } from '@shared/types'
 import { readConfig, updateConfig } from './config-store'
+import { enumerateListeners, matchListenersToProjects } from './listener-scanner'
 
 const activeProcesses = new Map<string, ChildProcess>()
-const detectedPorts = new Map<string, number>()
 
 /** Strip ANSI escape codes so colored output doesn't break matching */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes requires matching control chars
@@ -26,10 +26,6 @@ function detectPort(line: string): number | null {
     }
   }
   return null
-}
-
-export function getDetectedPort(projectId: string): number | null {
-  return detectedPorts.get(projectId) ?? null
 }
 
 function buildCommand(packageManager: PackageManager, script: string): [string, string[]] {
@@ -78,14 +74,6 @@ export function startProject(
     const port = detectPort(data.toString())
     if (port) {
       portFound = true
-      detectedPorts.set(projectId, port)
-      // Update stored PID to the actual port owner (grandchild process)
-      const owner = getPortOwner(port)
-      if (owner) {
-        updateConfig((config) => {
-          config.pids[projectId] = owner
-        })
-      }
       onPortDetected?.(projectId, port)
     }
   }
@@ -94,19 +82,6 @@ export function startProject(
 
   child.on('exit', () => {
     activeProcesses.delete(projectId)
-    // Only clear PID/port if the detected port is no longer active
-    const detectedPort = detectedPorts.get(projectId)
-    if (detectedPort) {
-      const owner = getPortOwner(detectedPort)
-      if (owner) {
-        // Grandchild still running — update PID to the survivor
-        updateConfig((config) => {
-          config.pids[projectId] = owner
-        })
-        return
-      }
-    }
-    detectedPorts.delete(projectId)
     updateConfig((config) => {
       delete config.pids[projectId]
     })
@@ -120,7 +95,7 @@ export function stopProject(projectId: string): Promise<void> {
     const child = activeProcesses.get(projectId)
 
     if (!child) {
-      // Try to kill via stored PID
+      // Not spawned by us — kill via stored PID
       const config = readConfig()
       const pid = config.pids[projectId]
       if (pid) {
@@ -129,23 +104,10 @@ export function stopProject(projectId: string): Promise<void> {
         } catch {
           // Process already dead
         }
+        updateConfig((c) => {
+          delete c.pids[projectId]
+        })
       }
-      // Also kill port owner if we know the port (handles grandchild processes)
-      const detectedPort = detectedPorts.get(projectId)
-      if (detectedPort) {
-        const owner = getPortOwner(detectedPort)
-        if (owner && owner !== pid) {
-          try {
-            process.kill(owner, 'SIGTERM')
-          } catch {
-            // Process already dead
-          }
-        }
-        detectedPorts.delete(projectId)
-      }
-      updateConfig((c) => {
-        delete c.pids[projectId]
-      })
       resolve()
       return
     }
@@ -167,16 +129,19 @@ export function stopProject(projectId: string): Promise<void> {
   })
 }
 
-export function isPidAlive(pid: number): boolean {
+/**
+ * Stop a specific listener by PID.
+ * Used for granular control over individual processes within a project.
+ */
+export function stopListener(pid: number): void {
   try {
-    process.kill(pid, 0)
-    return true
+    process.kill(pid, 'SIGTERM')
   } catch {
-    return false
+    // Process already dead
   }
 }
 
-export function getPortOwner(port: number): number | null {
+function getPortOwner(port: number): number | null {
   try {
     const output = execSync(`lsof -i :${port} -t`, { encoding: 'utf-8', timeout: 3000 })
     const pids = output
@@ -190,53 +155,18 @@ export function getPortOwner(port: number): number | null {
   }
 }
 
-export function reconcileProcess(projectId: string, expectedPort: number | null): ProcessState {
+/**
+ * Detect all running projects by enumerating OS TCP listeners
+ * and matching their working directories to known project paths.
+ */
+export function detectAllListeners(): Record<string, Listener[]> {
   const config = readConfig()
-  const storedPid = config.pids[projectId]
-
-  if (!storedPid) {
-    // No stored PID — check if port is occupied by something else
-    if (expectedPort) {
-      const owner = getPortOwner(expectedPort)
-      if (owner) return 'port-conflict'
-    }
-    return 'stopped'
+  const projectPaths: Record<string, string> = {}
+  for (const [id, cached] of Object.entries(config.projects)) {
+    projectPaths[id] = cached.path
   }
-
-  if (!isPidAlive(storedPid)) {
-    // PID is dead — clean up
-    updateConfig((c) => {
-      delete c.pids[projectId]
-    })
-    if (expectedPort) {
-      const owner = getPortOwner(expectedPort)
-      if (owner) return 'port-conflict'
-    }
-    return 'stopped'
-  }
-
-  // PID is alive — verify it owns the expected port
-  if (expectedPort) {
-    const owner = getPortOwner(expectedPort)
-    if (owner === storedPid) return 'running'
-    if (owner && owner !== storedPid) return 'port-conflict'
-    // lsof failed or port not yet bound — trust PID alive as running
-  }
-
-  return 'running'
-}
-
-export function reconcileAll(): Record<string, ProcessState> {
-  const config = readConfig()
-  const states: Record<string, ProcessState> = {}
-
-  for (const [projectId, cached] of Object.entries(config.projects)) {
-    const override = config.overrides[projectId]
-    const port = override?.port ?? detectedPorts.get(projectId) ?? null
-    states[projectId] = reconcileProcess(projectId, port)
-  }
-
-  return states
+  const { listeners, cwdByPid } = enumerateListeners()
+  return matchListenersToProjects(listeners, cwdByPid, projectPaths)
 }
 
 export function getActiveProcesses(): Map<string, ChildProcess> {

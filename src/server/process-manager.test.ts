@@ -1,6 +1,5 @@
 import type { LocalhostConfig } from '@shared/types'
 import { describe, expect, it, vi } from 'vitest'
-import { isPidAlive, reconcileProcess } from './process-manager'
 
 let storedConfig: LocalhostConfig = {
   scanRoot: '/tmp/Code',
@@ -20,6 +19,13 @@ vi.mock('./config-store', () => ({
   }),
 }))
 
+vi.mock('./listener-scanner', () => ({
+  enumerateListeners: () => ({ listeners: [], cwdByPid: new Map() }),
+  matchListenersToProjects: () => ({}),
+}))
+
+const { detectAllListeners } = await import('./process-manager')
+
 function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
   storedConfig = {
     scanRoot: '/tmp/Code',
@@ -33,28 +39,27 @@ function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
 }
 
 describe('process-manager', () => {
-  describe('isPidAlive', () => {
-    it('returns true for current process', () => {
-      expect(isPidAlive(process.pid)).toBe(true)
-    })
-
-    it('returns false for non-existent PID', () => {
-      expect(isPidAlive(999999)).toBe(false)
-    })
-  })
-
-  describe('reconcileProcess', () => {
-    it('returns stopped when no PID stored', () => {
+  describe('detectAllListeners', () => {
+    it('returns empty object when no projects exist', () => {
       resetConfig()
-      const state = reconcileProcess('test-project', null)
-      expect(state).toBe('stopped')
+      const result = detectAllListeners()
+      expect(result).toEqual({})
     })
 
-    it('cleans up dead PID and returns stopped', () => {
-      resetConfig({ pids: { 'test-project': 999999 } })
-      const state = reconcileProcess('test-project', null)
-      expect(state).toBe('stopped')
-      expect(storedConfig.pids['test-project']).toBeUndefined()
+    it('returns empty object when no listeners match', () => {
+      resetConfig({
+        projects: {
+          '/tmp/my-app': {
+            name: 'my-app',
+            path: '/tmp/my-app',
+            packageManager: 'npm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+        },
+      })
+      const result = detectAllListeners()
+      expect(result).toEqual({})
     })
   })
 })

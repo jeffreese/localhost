@@ -28,14 +28,24 @@ function handleProcessStarted(data: unknown) {
 function handleProcessStopped(data: unknown) {
   const { projectId } = data as { projectId: string }
   projects = projects.map((p) =>
-    p.id === projectId ? { ...p, processState: 'stopped' as const, pid: null, port: null } : p,
+    p.id === projectId ? { ...p, processState: 'stopped' as const, listeners: [] } : p,
   )
   notify()
 }
 
 function handlePortDetected(data: unknown) {
   const { projectId, port } = data as { projectId: string; port: number }
-  projects = projects.map((p) => (p.id === projectId ? { ...p, port } : p))
+  projects = projects.map((p) => {
+    if (p.id !== projectId) return p
+    // Add new listener entry if this port isn't already tracked
+    const hasPort = p.listeners.some((l) => l.port === port)
+    if (hasPort) return p
+    return {
+      ...p,
+      listeners: [...p.listeners, { pid: 0, port }],
+      processState: 'running' as const,
+    }
+  })
   notify()
 }
 

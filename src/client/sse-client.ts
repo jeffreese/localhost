@@ -16,6 +16,7 @@ export function connect(url = '/api/events'): void {
   eventSource.addEventListener('process-stopped', (e) =>
     emit('process-stopped', JSON.parse(e.data)),
   )
+  eventSource.addEventListener('port-detected', (e) => emit('port-detected', JSON.parse(e.data)))
   eventSource.addEventListener('project-updated', (e) =>
     emit('project-updated', JSON.parse(e.data)),
   )

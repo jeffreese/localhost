@@ -19,25 +19,11 @@ export class LhProjectCard extends LitElement {
   }
 
   private get statusColor(): string {
-    switch (this.project.processState) {
-      case 'running':
-        return 'bg-success'
-      case 'port-conflict':
-        return 'bg-warning'
-      default:
-        return 'bg-muted'
-    }
+    return this.project.processState === 'running' ? 'bg-success' : 'bg-muted'
   }
 
   private get statusLabel(): string {
-    switch (this.project.processState) {
-      case 'running':
-        return 'Running'
-      case 'port-conflict':
-        return 'Port conflict'
-      default:
-        return 'Stopped'
-    }
+    return this.project.processState === 'running' ? 'Running' : 'Stopped'
   }
 
   private async handleStart() {
@@ -48,10 +34,8 @@ export class LhProjectCard extends LitElement {
     await fetch(`/api/projects/${encodeURIComponent(this.project.id)}/stop`, { method: 'POST' })
   }
 
-  private handleOpen() {
-    if (this.project.port) {
-      window.open(`http://localhost:${this.project.port}`, '_blank')
-    }
+  private handleOpen(port: number) {
+    window.open(`http://localhost:${port}`, '_blank')
   }
 
   private toggleMenu() {
@@ -119,7 +103,11 @@ export class LhProjectCard extends LitElement {
 
         <div class="flex items-center gap-xs mb-sm text-xs">
           <span class="text-secondary">${this.statusLabel}</span>
-          ${p.port ? html`<span class="text-muted">· :${p.port}</span>` : ''}
+          ${
+            p.listeners.length > 0
+              ? p.listeners.map((l) => html`<span class="text-muted">· :${l.port}</span>`)
+              : ''
+          }
           ${p.devScript ? html`<span class="text-muted">· ${p.devScript}</span>` : ''}
         </div>
 
@@ -143,13 +131,15 @@ export class LhProjectCard extends LitElement {
           }
 
           ${
-            isRunning && p.port
-              ? html`
+            isRunning && p.listeners.length > 0
+              ? p.listeners.map(
+                  (l) => html`
               <button
                 class="bg-accent/10 text-accent rounded-md px-sm py-xs text-xs hover:bg-accent/20 cursor-pointer"
-                @click=${() => this.handleOpen()}
-              >Open</button>
-            `
+                @click=${() => this.handleOpen(l.port)}
+              >:${l.port}</button>
+            `,
+                )
               : ''
           }
 

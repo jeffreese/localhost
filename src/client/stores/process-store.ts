@@ -64,10 +64,4 @@ export const ProcessStore = {
       .filter(([, state]) => state === 'running')
       .map(([id]) => id)
   },
-
-  getConflicts(): string[] {
-    return Array.from(processStates.entries())
-      .filter(([, state]) => state === 'port-conflict')
-      .map(([id]) => id)
-  },
 }

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { readConfig, updateConfig } from './config-store'
-import { getDetectedPort, reconcileAll, startProject, stopProject } from './process-manager'
+import { detectAllListeners, startProject, stopListener, stopProject } from './process-manager'
 import { scanAndPersist } from './scanner'
 import { broadcast, handleSSE } from './sse'
 
@@ -9,20 +9,22 @@ const api = new Hono()
 // GET /api/projects — list all projects with current state
 api.get('/projects', (c) => {
   const config = readConfig()
-  const states = reconcileAll()
+  const listenerMap = detectAllListeners()
 
-  const projects = Object.entries(config.projects).map(([id, cached]) => ({
-    id,
-    ...cached,
-    visibility: config.ignored.includes(id)
-      ? 'ignored'
-      : config.hidden.includes(id)
-        ? 'hidden'
-        : 'visible',
-    processState: states[id] ?? 'stopped',
-    pid: config.pids[id] ?? null,
-    port: config.overrides[id]?.port ?? getDetectedPort(id),
-  }))
+  const projects = Object.entries(config.projects).map(([id, cached]) => {
+    const listeners = listenerMap[id] ?? []
+    return {
+      id,
+      ...cached,
+      visibility: config.ignored.includes(id)
+        ? 'ignored'
+        : config.hidden.includes(id)
+          ? 'hidden'
+          : 'visible',
+      listeners,
+      processState: listeners.length > 0 ? 'running' : 'stopped',
+    }
+  })
 
   return c.json(projects)
 })
@@ -31,20 +33,22 @@ api.get('/projects', (c) => {
 api.post('/scan', (c) => {
   const projects = scanAndPersist()
   const config = readConfig()
-  const states = reconcileAll()
+  const listenerMap = detectAllListeners()
 
-  const result = Array.from(projects.entries()).map(([id, cached]) => ({
-    id,
-    ...cached,
-    visibility: config.ignored.includes(id)
-      ? 'ignored'
-      : config.hidden.includes(id)
-        ? 'hidden'
-        : 'visible',
-    processState: states[id] ?? 'stopped',
-    pid: config.pids[id] ?? null,
-    port: config.overrides[id]?.port ?? getDetectedPort(id),
-  }))
+  const result = Array.from(projects.entries()).map(([id, cached]) => {
+    const listeners = listenerMap[id] ?? []
+    return {
+      id,
+      ...cached,
+      visibility: config.ignored.includes(id)
+        ? 'ignored'
+        : config.hidden.includes(id)
+          ? 'hidden'
+          : 'visible',
+      listeners,
+      processState: listeners.length > 0 ? 'running' : 'stopped',
+    }
+  })
 
   broadcast({ type: 'scan-complete', data: result })
   return c.json(result)
@@ -79,12 +83,33 @@ api.post('/projects/:id/start', (c) => {
   }
 })
 
-// POST /api/projects/:id/stop — stop a project's dev server
+// POST /api/projects/:id/stop — stop all listeners for a project
 api.post('/projects/:id/stop', async (c) => {
   const projectId = decodeURIComponent(c.req.param('id'))
+
+  // Kill all detected listeners for this project
+  const listenerMap = detectAllListeners()
+  const listeners = listenerMap[projectId] ?? []
+  for (const listener of listeners) {
+    stopListener(listener.pid)
+  }
+
+  // Also stop any process we spawned
   await stopProject(projectId)
   broadcast({ type: 'process-stopped', data: { projectId } })
   return c.json({ status: 'stopped', projectId })
+})
+
+// POST /api/projects/:id/stop/:pid — stop a specific listener
+api.post('/projects/:id/stop/:pid', (c) => {
+  const pid = Number.parseInt(c.req.param('pid'), 10)
+  if (Number.isNaN(pid)) {
+    return c.json({ error: 'Invalid PID' }, 400)
+  }
+  stopListener(pid)
+  const projectId = decodeURIComponent(c.req.param('id'))
+  broadcast({ type: 'process-stopped', data: { projectId } })
+  return c.json({ status: 'stopped', pid })
 })
 
 // PATCH /api/projects/:id — update visibility or config overrides
