@@ -1,68 +1,76 @@
 ---
-title: "ADR-006: Two-Step PID/Port Reconciliation"
+title: "ADR-006: Listener Enumeration for Process Detection"
 phase: 2
 project: localhost
-date: 2026-03-16
+date: 2026-03-17
 status: accepted
+supersedes: "ADR-006 (original: Two-Step PID/Port Reconciliation)"
 ---
 
-# ADR-006: Two-Step PID/Port Reconciliation
+# ADR-006: Listener Enumeration for Process Detection
 
 ## Status
 
-Accepted
+Accepted (supersedes original ADR-006)
 
 ## Context
 
-Localhost spawns dev server processes and tracks their PIDs. When localhost itself restarts (or crashes), it needs to determine which previously-spawned servers are still running. A naive approach — checking if the expected port is responding — produces false positives when a different process has taken over that port (e.g., the user manually started something else on port 3000).
+The original ADR-006 used PID-based tracking: localhost stored PIDs when it spawned processes, then verified PID + port ownership on reconciliation. This had a fundamental blind spot — dev servers started outside localhost (from a terminal, IDE, etc.) were never detected. Since most developers start their servers from the terminal, the dashboard frequently showed "stopped" for projects that were actually running.
 
 ## Decision
 
-We will use **two-step verification** on startup to reconcile process state:
+We use **OS listener enumeration** as the source of truth for process detection. Instead of tracking what we started, we ask the OS what's actually listening:
 
-1. **PID check** — for each stored PID, verify it's still alive (`process.kill(pid, 0)`)
-2. **Port ownership check** — if the PID is alive, verify it owns the expected port via `lsof -i :port -t` and confirm the PID matches
+1. **Enumerate all TCP listeners** via `lsof -iTCP -sTCP:LISTEN -P -n -F pn`
+2. **Resolve each listener's working directory** via `lsof -p PID -d cwd -F n`
+3. **Match working directories to known project paths** — a listener is attributed to a project if its cwd is within that project's directory
 
-This produces three states:
+This produces two states:
 
 | State | Condition |
 |-------|-----------|
-| **Running** | Our PID is alive and owns the expected port |
-| **Stopped** | PID is dead and port is free |
-| **Port conflict** | Port is occupied by a process we didn't spawn |
+| **Running** | One or more TCP listeners have a cwd matching the project path |
+| **Stopped** | No matching listeners found |
+
+Projects can have **multiple listeners** (e.g., a backend server + Vite dev server). All are surfaced in the UI.
+
+PID tracking (`config.pids`) is retained only for process management — stopping processes that localhost spawned. It is never used for detection.
 
 ## Alternatives Considered
 
-### Port check only (TCP connect)
-- **Pros:** Simple, works everywhere, no OS-specific tools
-- **Cons:** False positives — can't distinguish "our app on port 3000" from "some other app on port 3000." This was the specific failure mode that prompted this decision.
+### Original PID + port verification (previous ADR-006)
+- **Pros:** Simple, deterministic
+- **Cons:** Only detected processes localhost spawned. Missed externally-started servers entirely — the most common case.
 
-### PID check only
-- **Pros:** Simple, no OS-specific tools
-- **Cons:** Doesn't detect port conflicts. A stale PID could be reused by the OS for an unrelated process (unlikely but possible).
+### Port-first detection (check expected port, infer state)
+- **Pros:** Simpler than full enumeration
+- **Cons:** Requires knowing the expected port in advance. Many projects use dynamic ports. Can't distinguish between a project's server and an unrelated process on the same port.
 
-### Store process metadata (command, cwd) and verify
-- **Pros:** Most reliable identification
-- **Cons:** Over-engineered. PID + port ownership is sufficient for a local dev tool. Process metadata verification adds complexity for an edge case of an edge case.
+### Process table scanning (pgrep for node processes)
+- **Pros:** Finds all Node processes
+- **Cons:** Would match non-server Node processes (build scripts, tests, etc.). No port information without additional lsof calls anyway.
 
 ## Consequences
 
 ### Positive
-- Eliminates false "running" signals from port squatters
-- Surfaces port conflicts explicitly so the user can resolve them
-- PID persistence enables crash recovery — localhost can reconnect to orphaned servers it spawned
+- Detects all running dev servers regardless of how they were started
+- Supports multi-listener projects (frontend + backend in one project)
+- Eliminates the entire class of stale-PID problems
+- Single source of truth — the OS network stack — means no state synchronization issues
 
 ### Negative
-- Depends on `lsof` (macOS/Linux) — not portable to Windows (acceptable: macOS is the target platform)
-- Two system calls per project on startup instead of one — negligible for the expected project count
+- Depends on `lsof` (macOS) — not portable to Windows
+- Per-PID cwd lookups add latency proportional to the number of unique listening processes on the system
+- Projects running servers from a different working directory than their root won't be matched (uncommon for dev servers)
 
 ## Enforcement
 
-- Never mark a project as "running" based on port check alone — PID ownership must be verified
-- `lsof` failure (command not found) should fall back to port-only check with a logged warning, not crash
-- Stale PIDs must be cleared from config when the process is confirmed dead
+- Process state is determined by enumerating OS TCP listeners and matching their cwds to project paths
+- Never rely on stored PIDs for determining running state
+- `config.pids` is only for stop/manage capability on processes localhost spawned
+- `lsof` failure should gracefully return empty results (all projects show as stopped)
 
 ## Related Decisions
 
-- ADR-005: SSE for state updates (reconciliation results are pushed via SSE on startup)
-- ADR-007: Project visibility model (hidden/ignored projects still undergo reconciliation if they have stored PIDs)
+- ADR-005: SSE for state updates (detection results are pushed via SSE)
+- ADR-007: Project visibility model (hidden projects with active listeners still show as running)

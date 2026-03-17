@@ -154,7 +154,7 @@ export class LhDashboard extends LitElement {
 
         <!-- Port Table -->
         ${
-          this.runningCount > 0
+          this.projects.some((p) => p.listeners.length > 0)
             ? html`
             <div class="mt-lg">
               <lh-port-table .projects=${this.projects}></lh-port-table>

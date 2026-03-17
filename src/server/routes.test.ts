@@ -20,10 +20,10 @@ vi.mock('./config-store', () => ({
 }))
 
 vi.mock('./process-manager', () => ({
-  reconcileAll: () => ({}),
+  detectAllListeners: () => ({}),
   startProject: vi.fn(),
   stopProject: vi.fn(() => Promise.resolve()),
-  getDetectedPort: () => null,
+  stopListener: vi.fn(),
 }))
 
 vi.mock('./scanner', () => ({
@@ -58,7 +58,7 @@ describe('routes', () => {
     expect(body).toEqual([])
   })
 
-  it('GET /api/projects returns projects with state', async () => {
+  it('GET /api/projects returns projects with listeners and state', async () => {
     resetConfig({
       projects: {
         '/tmp/my-app': {
@@ -76,6 +76,8 @@ describe('routes', () => {
     expect(body).toHaveLength(1)
     expect(body[0].name).toBe('my-app')
     expect(body[0].visibility).toBe('visible')
+    expect(body[0].listeners).toEqual([])
+    expect(body[0].processState).toBe('stopped')
   })
 
   it('POST /api/scan returns results', async () => {

@@ -26,11 +26,11 @@ pnpm test         # Vitest unit/integration tests
 
 Two-layer local application — no database, no external APIs.
 
-- **Backend:** Four services — Scanner (finds projects in `~/Code/`), Process Manager (spawns/kills dev servers, tracks PIDs), Config Store (reads/writes `~/.localhost/config.json`), SSE Broadcaster (pushes state changes to frontend)
+- **Backend:** Five services — Scanner (finds projects in `~/Code/`), Listener Scanner (enumerates OS TCP listeners + matches to projects by cwd), Process Manager (spawns/kills dev servers), Config Store (reads/writes `~/.localhost/config.json`), SSE Broadcaster (pushes state changes to frontend)
 - **Frontend:** Four Lit components (`<lh-dashboard>`, `<lh-project-card>`, `<lh-port-table>`, `<lh-config-panel>`) + three reactive stores (ProjectStore, ProcessStore, UIStore)
 - **Communication:** REST for commands → backend. SSE for state updates → frontend. No WebSocket, no polling.
-- **Startup:** Two-step PID/port reconciliation verifies PID is alive AND owns the expected port. Three states: running, stopped, port conflict.
-- **Config:** `~/.localhost/config.json` persists project cache, PID mappings, per-project overrides, hidden/ignored lists.
+- **Process detection:** OS listener enumeration via `lsof` — enumerates all TCP listeners, resolves their cwds, matches to project paths. Detects all running servers regardless of how they were started. Two states: running, stopped. Projects can have multiple listeners.
+- **Config:** `~/.localhost/config.json` persists project cache, PID mappings (for stop capability only), per-project overrides, hidden/ignored lists.
 
 ## File Organization
 
@@ -63,7 +63,7 @@ All ADRs are in `docs/adrs/`. Key constraints enforced by rules:
 3. **Light DOM** — No shadow DOM anywhere (ADR-003)
 4. **Reactive stores** — No external state libraries; one store per domain (ADR-004)
 5. **SSE only** — No WebSocket or polling for real-time updates (ADR-005)
-6. **PID verification** — Never report "running" from PID alone; verify port ownership (ADR-006)
+6. **Listener enumeration** — Process state from OS TCP listeners + cwd matching, not stored PIDs (ADR-006)
 7. **No permanent deletion** — Projects can be hidden/ignored, never deleted from config (ADR-007)
 
 ## Development Roadmap
