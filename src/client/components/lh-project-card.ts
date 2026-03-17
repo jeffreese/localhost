@@ -1,11 +1,18 @@
-import type { Project } from '@shared/types'
+import type { Project, Visibility } from '@shared/types'
 import { LitElement, html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
+import { ProjectStore } from '../stores/project-store'
 
 @customElement('lh-project-card')
 export class LhProjectCard extends LitElement {
   @property({ type: Object }) project!: Project
   @state() private menuOpen = false
+
+  private closeMenuBound = (e: MouseEvent) => {
+    if (!this.contains(e.target as Node)) {
+      this.menuOpen = false
+    }
+  }
 
   createRenderRoot() {
     return this
@@ -47,8 +54,16 @@ export class LhProjectCard extends LitElement {
     }
   }
 
-  private async handleVisibility(visibility: 'hidden' | 'ignored') {
+  private toggleMenu() {
+    this.menuOpen = !this.menuOpen
+    if (this.menuOpen) {
+      document.addEventListener('click', this.closeMenuBound, { once: true })
+    }
+  }
+
+  private async handleVisibility(visibility: Visibility) {
     this.menuOpen = false
+    ProjectStore.updateVisibility(this.project.id, visibility)
     await fetch(`/api/projects/${encodeURIComponent(this.project.id)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -73,9 +88,10 @@ export class LhProjectCard extends LitElement {
             <span class="text-xs text-muted">${p.packageManager}</span>
             <div class="relative">
               <button
-                class="text-muted hover:text-secondary text-xs px-xs"
-                @click=${() => {
-                  this.menuOpen = !this.menuOpen
+                class="text-muted hover:text-secondary hover:bg-surface-overlay text-xs px-sm py-xs rounded-md cursor-pointer"
+                @click=${(e: Event) => {
+                  e.stopPropagation()
+                  this.toggleMenu()
                 }}
               >···</button>
               ${
@@ -83,11 +99,11 @@ export class LhProjectCard extends LitElement {
                   ? html`
                 <div class="absolute right-0 top-full mt-xs bg-surface-elevated border border-border rounded-md py-xs z-10 min-w-[120px]">
                   <button
-                    class="block w-full text-left px-sm py-xs text-xs text-secondary hover:text-primary hover:bg-surface-overlay"
+                    class="block w-full text-left px-sm py-xs text-xs text-secondary hover:text-primary hover:bg-surface-overlay cursor-pointer"
                     @click=${() => this.handleVisibility('hidden')}
                   >Hide</button>
                   <button
-                    class="block w-full text-left px-sm py-xs text-xs text-secondary hover:text-primary hover:bg-surface-overlay"
+                    class="block w-full text-left px-sm py-xs text-xs text-secondary hover:text-primary hover:bg-surface-overlay cursor-pointer"
                     @click=${() => this.handleVisibility('ignored')}
                   >Ignore</button>
                 </div>
@@ -113,13 +129,13 @@ export class LhProjectCard extends LitElement {
             isRunning
               ? html`
               <button
-                class="bg-danger/10 text-danger rounded-md px-sm py-xs text-xs hover:bg-danger/20"
+                class="bg-danger/10 text-danger rounded-md px-sm py-xs text-xs hover:bg-danger/20 cursor-pointer"
                 @click=${() => this.handleStop()}
               >Stop</button>
             `
               : html`
               <button
-                class="bg-success/10 text-success rounded-md px-sm py-xs text-xs hover:bg-success/20"
+                class="bg-success/10 text-success rounded-md px-sm py-xs text-xs hover:bg-success/20 cursor-pointer"
                 ?disabled=${!p.devScript}
                 @click=${() => this.handleStart()}
               >Start</button>
@@ -130,7 +146,7 @@ export class LhProjectCard extends LitElement {
             isRunning && p.port
               ? html`
               <button
-                class="bg-accent/10 text-accent rounded-md px-sm py-xs text-xs hover:bg-accent/20"
+                class="bg-accent/10 text-accent rounded-md px-sm py-xs text-xs hover:bg-accent/20 cursor-pointer"
                 @click=${() => this.handleOpen()}
               >Open</button>
             `

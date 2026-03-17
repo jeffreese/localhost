@@ -7,8 +7,10 @@ export default defineConfig({
     env: { NODE_ENV: 'test' },
   },
   server: {
+    port: 7770,
+    strictPort: true,
     proxy: {
-      '/api': 'http://localhost:7770',
+      '/api': 'http://localhost:7769',
     },
   },
   resolve: {

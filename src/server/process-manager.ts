@@ -3,6 +3,34 @@ import type { PackageManager, ProcessState } from '@shared/types'
 import { readConfig, updateConfig } from './config-store'
 
 const activeProcesses = new Map<string, ChildProcess>()
+const detectedPorts = new Map<string, number>()
+
+/** Strip ANSI escape codes so colored output doesn't break matching */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes requires matching control chars
+const ANSI_RE = /\x1b\[[0-9;]*m/g
+
+/** Regex to match common dev server port announcements */
+const PORT_PATTERNS = [
+  /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::\]):(\d+)/,
+  /(?:port|Port|PORT)\s*(?::|=)?\s*(\d+)/,
+  /listening\s+(?:on\s+)?(?:port\s+)?(\d+)/i,
+]
+
+function detectPort(line: string): number | null {
+  const clean = line.replace(ANSI_RE, '')
+  for (const pattern of PORT_PATTERNS) {
+    const match = clean.match(pattern)
+    if (match) {
+      const port = Number.parseInt(match[1], 10)
+      if (port > 0 && port < 65536) return port
+    }
+  }
+  return null
+}
+
+export function getDetectedPort(projectId: string): number | null {
+  return detectedPorts.get(projectId) ?? null
+}
 
 function buildCommand(packageManager: PackageManager, script: string): [string, string[]] {
   switch (packageManager) {
@@ -20,6 +48,7 @@ export function startProject(
   projectPath: string,
   packageManager: PackageManager,
   devScript: string,
+  onPortDetected?: (projectId: string, port: number) => void,
 ): ChildProcess {
   if (activeProcesses.has(projectId)) {
     throw new Error(`Project ${projectId} is already running`)
@@ -42,8 +71,42 @@ export function startProject(
     })
   }
 
+  // Watch stdout/stderr for port announcements
+  let portFound = false
+  const handleOutput = (data: Buffer) => {
+    if (portFound) return
+    const port = detectPort(data.toString())
+    if (port) {
+      portFound = true
+      detectedPorts.set(projectId, port)
+      // Update stored PID to the actual port owner (grandchild process)
+      const owner = getPortOwner(port)
+      if (owner) {
+        updateConfig((config) => {
+          config.pids[projectId] = owner
+        })
+      }
+      onPortDetected?.(projectId, port)
+    }
+  }
+  child.stdout?.on('data', handleOutput)
+  child.stderr?.on('data', handleOutput)
+
   child.on('exit', () => {
     activeProcesses.delete(projectId)
+    // Only clear PID/port if the detected port is no longer active
+    const detectedPort = detectedPorts.get(projectId)
+    if (detectedPort) {
+      const owner = getPortOwner(detectedPort)
+      if (owner) {
+        // Grandchild still running — update PID to the survivor
+        updateConfig((config) => {
+          config.pids[projectId] = owner
+        })
+        return
+      }
+    }
+    detectedPorts.delete(projectId)
     updateConfig((config) => {
       delete config.pids[projectId]
     })
@@ -66,10 +129,23 @@ export function stopProject(projectId: string): Promise<void> {
         } catch {
           // Process already dead
         }
-        updateConfig((c) => {
-          delete c.pids[projectId]
-        })
       }
+      // Also kill port owner if we know the port (handles grandchild processes)
+      const detectedPort = detectedPorts.get(projectId)
+      if (detectedPort) {
+        const owner = getPortOwner(detectedPort)
+        if (owner && owner !== pid) {
+          try {
+            process.kill(owner, 'SIGTERM')
+          } catch {
+            // Process already dead
+          }
+        }
+        detectedPorts.delete(projectId)
+      }
+      updateConfig((c) => {
+        delete c.pids[projectId]
+      })
       resolve()
       return
     }
@@ -156,7 +232,7 @@ export function reconcileAll(): Record<string, ProcessState> {
 
   for (const [projectId, cached] of Object.entries(config.projects)) {
     const override = config.overrides[projectId]
-    const port = override?.port ?? null
+    const port = override?.port ?? detectedPorts.get(projectId) ?? null
     states[projectId] = reconcileProcess(projectId, port)
   }
 

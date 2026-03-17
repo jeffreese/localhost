@@ -23,6 +23,7 @@ vi.mock('./process-manager', () => ({
   reconcileAll: () => ({}),
   startProject: vi.fn(),
   stopProject: vi.fn(() => Promise.resolve()),
+  getDetectedPort: () => null,
 }))
 
 vi.mock('./scanner', () => ({

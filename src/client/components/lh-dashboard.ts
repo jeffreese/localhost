@@ -115,13 +115,13 @@ export class LhDashboard extends LitElement {
               Show hidden
             </label>
             <button
-              class="bg-surface-raised text-secondary border border-border rounded-md px-sm py-xs text-sm hover:text-primary hover:border-border-hover"
+              class="bg-surface-raised text-secondary border border-border rounded-md px-sm py-xs text-sm hover:text-primary hover:border-border-hover cursor-pointer"
               @click=${() => UIStore.toggleConfigPanel()}
             >
               Settings
             </button>
             <button
-              class="bg-accent text-surface rounded-md px-md py-xs text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+              class="bg-accent text-surface rounded-md px-md py-xs text-sm font-medium hover:bg-accent-hover disabled:opacity-50 cursor-pointer"
               ?disabled=${this.scanning}
               @click=${() => this.handleScan()}
             >

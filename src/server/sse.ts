@@ -6,6 +6,7 @@ export type SSEEvent =
   | { type: 'process-started'; data: { projectId: string } }
   | { type: 'process-stopped'; data: { projectId: string } }
   | { type: 'project-updated'; data: { projectId: string } }
+  | { type: 'port-detected'; data: { projectId: string; port: number } }
 
 type SSEClient = {
   send: (event: SSEEvent) => void

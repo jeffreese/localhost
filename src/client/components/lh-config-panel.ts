@@ -45,7 +45,7 @@ export class LhConfigPanel extends LitElement {
         <div class="flex items-center justify-between mb-sm">
           <h3 class="text-primary font-medium">Settings</h3>
           <button
-            class="text-secondary text-sm hover:text-primary"
+            class="text-secondary text-sm hover:text-primary cursor-pointer"
             @click=${() => UIStore.setConfigPanelOpen(false)}
           >Close</button>
         </div>
@@ -62,7 +62,7 @@ export class LhConfigPanel extends LitElement {
                     <li class="flex items-center justify-between text-sm">
                       <span class="text-muted">${p.name}</span>
                       <button
-                        class="text-accent text-xs hover:text-accent-hover"
+                        class="text-accent text-xs hover:text-accent-hover cursor-pointer"
                         @click=${() => this.handleRestore(p.id)}
                       >Restore</button>
                     </li>
@@ -86,7 +86,7 @@ export class LhConfigPanel extends LitElement {
                     <li class="flex items-center justify-between text-sm">
                       <span class="text-muted">${p.name}</span>
                       <button
-                        class="text-accent text-xs hover:text-accent-hover"
+                        class="text-accent text-xs hover:text-accent-hover cursor-pointer"
                         @click=${() => this.handleRestore(p.id)}
                       >Restore</button>
                     </li>

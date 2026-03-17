@@ -7,7 +7,7 @@ const app = new Hono()
 app.get('/api/health', (c) => c.json({ status: 'ok' }))
 app.route('/api', api)
 
-export const port = 7770
+export const port = 7769
 
 if (process.env.NODE_ENV !== 'test') {
   serve({ fetch: app.fetch, port }, () => {

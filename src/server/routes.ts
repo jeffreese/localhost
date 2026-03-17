@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { readConfig, updateConfig } from './config-store'
-import { reconcileAll, startProject, stopProject } from './process-manager'
+import { getDetectedPort, reconcileAll, startProject, stopProject } from './process-manager'
 import { scanAndPersist } from './scanner'
 import { broadcast, handleSSE } from './sse'
 
@@ -21,7 +21,7 @@ api.get('/projects', (c) => {
         : 'visible',
     processState: states[id] ?? 'stopped',
     pid: config.pids[id] ?? null,
-    port: config.overrides[id]?.port ?? null,
+    port: config.overrides[id]?.port ?? getDetectedPort(id),
   }))
 
   return c.json(projects)
@@ -43,7 +43,7 @@ api.post('/scan', (c) => {
         : 'visible',
     processState: states[id] ?? 'stopped',
     pid: config.pids[id] ?? null,
-    port: config.overrides[id]?.port ?? null,
+    port: config.overrides[id]?.port ?? getDetectedPort(id),
   }))
 
   broadcast({ type: 'scan-complete', data: result })
@@ -68,7 +68,9 @@ api.post('/projects/:id/start', (c) => {
   const devScript = override?.devScript ?? cached.devScript
 
   try {
-    startProject(projectId, cached.path, cached.packageManager, devScript)
+    startProject(projectId, cached.path, cached.packageManager, devScript, (id, port) => {
+      broadcast({ type: 'port-detected', data: { projectId: id, port } })
+    })
     broadcast({ type: 'process-started', data: { projectId } })
     return c.json({ status: 'started', projectId })
   } catch (err) {

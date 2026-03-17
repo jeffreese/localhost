@@ -76,7 +76,16 @@ function walk(dir: string, ignoredPaths: string[], depth: number): Map<string, P
   }
 
   // Skip common non-project directories
-  const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.nuxt', 'coverage'])
+  const skipDirs = new Set([
+    'node_modules',
+    '.git',
+    '.claude',
+    'dist',
+    'build',
+    '.next',
+    '.nuxt',
+    'coverage',
+  ])
 
   for (const entry of entries) {
     if (skipDirs.has(entry)) continue
@@ -105,6 +114,12 @@ export function scanAndPersist(): Map<string, ProjectCache> {
   const projects = scan()
   updateConfig((config) => {
     config.projects = Object.fromEntries(projects)
+    // Clean up stale entries from previously scanned skip directories
+    for (const id of Object.keys(config.projects)) {
+      if (id.includes('/.claude/')) {
+        delete config.projects[id]
+      }
+    }
   })
   return projects
 }

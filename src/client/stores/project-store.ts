@@ -28,8 +28,14 @@ function handleProcessStarted(data: unknown) {
 function handleProcessStopped(data: unknown) {
   const { projectId } = data as { projectId: string }
   projects = projects.map((p) =>
-    p.id === projectId ? { ...p, processState: 'stopped' as const, pid: null } : p,
+    p.id === projectId ? { ...p, processState: 'stopped' as const, pid: null, port: null } : p,
   )
+  notify()
+}
+
+function handlePortDetected(data: unknown) {
+  const { projectId, port } = data as { projectId: string; port: number }
+  projects = projects.map((p) => (p.id === projectId ? { ...p, port } : p))
   notify()
 }
 
@@ -48,6 +54,7 @@ export const ProjectStore = {
     on('scan-complete', handleScanComplete)
     on('process-started', handleProcessStarted)
     on('process-stopped', handleProcessStopped)
+    on('port-detected', handlePortDetected)
     on('project-updated', handleProjectUpdated)
   },
 
@@ -55,6 +62,7 @@ export const ProjectStore = {
     off('scan-complete', handleScanComplete)
     off('process-started', handleProcessStarted)
     off('process-stopped', handleProcessStopped)
+    off('port-detected', handlePortDetected)
     off('project-updated', handleProjectUpdated)
   },
 
@@ -72,6 +80,11 @@ export const ProjectStore = {
 
   setProjects(data: Project[]) {
     projects = data
+    notify()
+  },
+
+  updateVisibility(projectId: string, visibility: Visibility) {
+    projects = projects.map((p) => (p.id === projectId ? { ...p, visibility } : p))
     notify()
   },
 }
