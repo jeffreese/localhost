@@ -6,7 +6,7 @@ A local web dashboard that discovers and manages your JavaScript dev servers. Op
 
 **How Localhost solves it:** It continuously scans your projects directory and enumerates OS-level TCP listeners to build a real-time picture of every dev server on your machine. Detection is passive — it finds servers regardless of how they were started (terminal, IDE, background script). No configuration, no project-level setup. Just open a tab.
 
-<!-- TODO: Add screenshot -->
+![Localhost — dev server dashboard](docs/screenshot.png)
 
 ---
 
