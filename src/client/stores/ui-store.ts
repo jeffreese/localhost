@@ -1,3 +1,5 @@
+import type { SortField, SortOrder } from '@shared/types'
+
 type Listener = () => void
 
 const listeners = new Set<Listener>()
@@ -7,12 +9,22 @@ let state = {
   configPanelOpen: false,
   showHidden: false,
   filter: '' as string,
+  sortField: 'name' as SortField,
+  sortOrder: 'asc' as SortOrder,
 }
 
 function notify() {
   for (const listener of listeners) {
     listener()
   }
+}
+
+function persistSort() {
+  fetch('/api/preferences', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sort: { field: state.sortField, order: state.sortOrder } }),
+  })
 }
 
 export const UIStore = {
@@ -23,6 +35,19 @@ export const UIStore = {
 
   getState() {
     return state
+  },
+
+  async loadPreferences() {
+    try {
+      const res = await fetch('/api/preferences')
+      const data = await res.json()
+      if (data.sort) {
+        state = { ...state, sortField: data.sort.field, sortOrder: data.sort.order }
+        notify()
+      }
+    } catch {
+      // Use defaults
+    }
   },
 
   selectProject(id: string | null) {
@@ -48,5 +73,23 @@ export const UIStore = {
   setFilter(filter: string) {
     state = { ...state, filter }
     notify()
+  },
+
+  setSortField(field: SortField) {
+    state = { ...state, sortField: field }
+    notify()
+    persistSort()
+  },
+
+  setSortOrder(order: SortOrder) {
+    state = { ...state, sortOrder: order }
+    notify()
+    persistSort()
+  },
+
+  toggleSortOrder() {
+    state = { ...state, sortOrder: state.sortOrder === 'asc' ? 'desc' : 'asc' }
+    notify()
+    persistSort()
   },
 }

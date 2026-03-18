@@ -14,6 +14,7 @@ function defaultConfig(): LocalhostConfig {
     overrides: {},
     hidden: [],
     ignored: [],
+    sort: { field: 'name', order: 'asc' },
   }
 }
 
@@ -35,7 +36,9 @@ function isValidConfig(data: unknown): data is LocalhostConfig {
     typeof obj.overrides === 'object' &&
     obj.overrides !== null &&
     Array.isArray(obj.hidden) &&
-    Array.isArray(obj.ignored)
+    Array.isArray(obj.ignored) &&
+    typeof obj.sort === 'object' &&
+    obj.sort !== null
   )
 }
 
@@ -57,6 +60,10 @@ function repairConfig(data: Record<string, unknown>): LocalhostConfig {
         : defaults.overrides,
     hidden: Array.isArray(data.hidden) ? data.hidden : defaults.hidden,
     ignored: Array.isArray(data.ignored) ? data.ignored : defaults.ignored,
+    sort:
+      typeof data.sort === 'object' && data.sort !== null
+        ? (data.sort as LocalhostConfig['sort'])
+        : defaults.sort,
   }
 }
 

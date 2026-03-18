@@ -8,6 +8,7 @@ let storedConfig: LocalhostConfig = {
   overrides: {},
   hidden: [],
   ignored: [],
+  sort: { field: 'name', order: 'asc' },
 }
 
 vi.mock('./config-store', () => ({
@@ -34,6 +35,7 @@ function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
     overrides: {},
     hidden: [],
     ignored: [],
+    sort: { field: 'name', order: 'asc' },
     ...overrides,
   }
 }
