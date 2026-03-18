@@ -26,6 +26,18 @@ export interface Project {
   processState: ProcessState
 }
 
+/** Sort field for dashboard project cards */
+export type SortField = 'name' | 'status'
+
+/** Sort direction */
+export type SortOrder = 'asc' | 'desc'
+
+/** Persisted sort preference */
+export interface SortPreference {
+  field: SortField
+  order: SortOrder
+}
+
 /** Per-project config overrides */
 export interface ProjectOverride {
   port?: number
@@ -40,6 +52,7 @@ export interface LocalhostConfig {
   overrides: Record<string, ProjectOverride>
   hidden: string[]
   ignored: string[]
+  sort: SortPreference
 }
 
 /** Cached project data from last scan */

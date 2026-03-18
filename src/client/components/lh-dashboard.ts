@@ -1,4 +1,4 @@
-import type { Project } from '@shared/types'
+import type { Project, SortField, SortOrder } from '@shared/types'
 import { LitElement, html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { connect } from '../sse-client'
@@ -14,6 +14,8 @@ export class LhDashboard extends LitElement {
   @state() private showHidden = false
   @state() private configPanelOpen = false
   @state() private filter = ''
+  @state() private sortField: SortField = 'name'
+  @state() private sortOrder: SortOrder = 'asc'
   @state() private scanning = false
 
   private unsubProject?: () => void
@@ -37,8 +39,11 @@ export class LhDashboard extends LitElement {
       this.showHidden = uiState.showHidden
       this.configPanelOpen = uiState.configPanelOpen
       this.filter = uiState.filter
+      this.sortField = uiState.sortField
+      this.sortOrder = uiState.sortOrder
     })
 
+    UIStore.loadPreferences()
     this.loadProjects()
   }
 
@@ -78,6 +83,17 @@ export class LhDashboard extends LitElement {
       list = list.filter((p) => p.name.toLowerCase().includes(lower))
     }
 
+    const dir = this.sortOrder === 'asc' ? 1 : -1
+    if (this.sortField === 'name') {
+      list.sort((a, b) => dir * a.name.localeCompare(b.name))
+    } else {
+      // Status sort: running before stopped in asc, reversed in desc
+      list.sort((a, b) => {
+        if (a.processState === b.processState) return a.name.localeCompare(b.name)
+        return dir * (a.processState === 'running' ? -1 : 1)
+      })
+    }
+
     return list
   }
 
@@ -106,6 +122,24 @@ export class LhDashboard extends LitElement {
               .value=${this.filter}
               @input=${(e: InputEvent) => UIStore.setFilter((e.target as HTMLInputElement).value)}
             />
+            <div class="flex items-center gap-xs">
+              <select
+                class="bg-surface-raised text-primary border border-border rounded-md px-sm py-xs text-sm focus:outline-none focus:border-accent cursor-pointer"
+                .value=${this.sortField}
+                @change=${(e: Event) =>
+                  UIStore.setSortField((e.target as HTMLSelectElement).value as SortField)}
+              >
+                <option value="name">Name</option>
+                <option value="status">Status</option>
+              </select>
+              <button
+                class="bg-surface-raised text-secondary border border-border rounded-md px-xs py-xs text-sm hover:text-primary hover:border-border-hover cursor-pointer"
+                title=${this.sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                @click=${() => UIStore.toggleSortOrder()}
+              >
+                ${this.sortOrder === 'asc' ? '\u2191' : '\u2193'}
+              </button>
+            </div>
             <label class="flex items-center gap-xs text-sm text-secondary cursor-pointer">
               <input
                 type="checkbox"

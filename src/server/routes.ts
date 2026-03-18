@@ -151,6 +151,30 @@ api.patch('/projects/:id', async (c) => {
   return c.json({ status: 'updated', projectId })
 })
 
+// GET /api/preferences — get UI preferences (sort, etc.)
+api.get('/preferences', (c) => {
+  const config = readConfig()
+  return c.json({ sort: config.sort })
+})
+
+// PATCH /api/preferences — update UI preferences
+api.patch('/preferences', async (c) => {
+  const body = await c.req.json<{
+    sort?: { field: string; order: string }
+  }>()
+
+  if (body.sort) {
+    const { field, order } = body.sort
+    if ((field === 'name' || field === 'status') && (order === 'asc' || order === 'desc')) {
+      updateConfig((config) => {
+        config.sort = { field, order }
+      })
+    }
+  }
+
+  return c.json({ status: 'updated' })
+})
+
 // GET /api/events — SSE stream
 api.get('/events', handleSSE)
 
