@@ -9,6 +9,7 @@ let mockConfig: LocalhostConfig = {
   hidden: [],
   ignored: [],
   sort: { field: 'name', order: 'asc' },
+  customOrder: [],
 }
 
 vi.mock('./config-store', () => ({
@@ -47,8 +48,9 @@ function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
     hidden: [],
     ignored: [],
     sort: { field: 'name', order: 'asc' },
+    customOrder: [],
     ...overrides,
-  }
+  } as LocalhostConfig
 }
 
 describe('routes', () => {

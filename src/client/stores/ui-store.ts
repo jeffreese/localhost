@@ -1,4 +1,5 @@
 import type { SortField, SortOrder } from '@shared/types'
+import { off, on } from '../sse-client'
 
 type Listener = () => void
 
@@ -11,6 +12,7 @@ let state = {
   filter: '' as string,
   sortField: 'name' as SortField,
   sortOrder: 'asc' as SortOrder,
+  customOrder: [] as string[],
 }
 
 function notify() {
@@ -27,6 +29,27 @@ function persistSort() {
   })
 }
 
+function handlePreferencesUpdated(data: unknown) {
+  const prefs = data as { sort?: { field: SortField; order: SortOrder }; customOrder?: string[] }
+  if (prefs.sort) {
+    state = {
+      ...state,
+      sortField: prefs.sort.field,
+      sortOrder: prefs.sort.order,
+      customOrder: prefs.customOrder ?? state.customOrder,
+    }
+    notify()
+  }
+}
+
+function persistCustomOrder() {
+  fetch('/api/preferences', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ customOrder: state.customOrder }),
+  })
+}
+
 export const UIStore = {
   subscribe(listener: Listener): () => void {
     listeners.add(listener)
@@ -37,12 +60,25 @@ export const UIStore = {
     return state
   },
 
+  init() {
+    on('preferences-updated', handlePreferencesUpdated)
+  },
+
+  destroy() {
+    off('preferences-updated', handlePreferencesUpdated)
+  },
+
   async loadPreferences() {
     try {
       const res = await fetch('/api/preferences')
       const data = await res.json()
       if (data.sort) {
-        state = { ...state, sortField: data.sort.field, sortOrder: data.sort.order }
+        state = {
+          ...state,
+          sortField: data.sort.field,
+          sortOrder: data.sort.order,
+          customOrder: data.customOrder ?? [],
+        }
         notify()
       }
     } catch {
@@ -91,5 +127,11 @@ export const UIStore = {
     state = { ...state, sortOrder: state.sortOrder === 'asc' ? 'desc' : 'asc' }
     notify()
     persistSort()
+  },
+
+  setCustomOrder(order: string[]) {
+    state = { ...state, customOrder: order }
+    notify()
+    persistCustomOrder()
   },
 }

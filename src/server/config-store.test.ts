@@ -41,6 +41,7 @@ describe('config-store', () => {
     expect(config.overrides).toEqual({})
     expect(config.hidden).toEqual([])
     expect(config.ignored).toEqual([])
+    expect(config.customOrder).toEqual([])
   })
 
   it('reads existing config', () => {
@@ -71,6 +72,7 @@ describe('config-store', () => {
     expect(config.scanRoot).toBe('/custom/path')
     expect(config.projects).toEqual({})
     expect(config.hidden).toEqual([])
+    expect(config.customOrder).toEqual([])
   })
 
   it('writes and reads back config', () => {
