@@ -27,7 +27,7 @@ export interface Project {
 }
 
 /** Sort field for dashboard project cards */
-export type SortField = 'name' | 'status'
+export type SortField = 'name' | 'status' | 'custom'
 
 /** Sort direction */
 export type SortOrder = 'asc' | 'desc'
@@ -53,6 +53,7 @@ export interface LocalhostConfig {
   hidden: string[]
   ignored: string[]
   sort: SortPreference
+  customOrder: string[]
 }
 
 /** Cached project data from last scan */

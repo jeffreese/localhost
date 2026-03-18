@@ -36,3 +36,19 @@
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
 }
+
+/* Drag-and-drop styles for custom sort */
+.drag-wrapper {
+  cursor: grab;
+  border-radius: var(--radius-lg);
+  transition: outline 150ms ease;
+}
+
+.drag-wrapper:active {
+  cursor: grabbing;
+}
+
+.drag-wrapper.drag-over {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

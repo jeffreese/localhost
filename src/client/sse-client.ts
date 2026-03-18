@@ -20,6 +20,9 @@ export function connect(url = '/api/events'): void {
   eventSource.addEventListener('project-updated', (e) =>
     emit('project-updated', JSON.parse(e.data)),
   )
+  eventSource.addEventListener('preferences-updated', (e) =>
+    emit('preferences-updated', JSON.parse(e.data)),
+  )
 
   eventSource.onerror = () => {
     eventSource?.close()

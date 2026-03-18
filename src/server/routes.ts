@@ -154,24 +154,37 @@ api.patch('/projects/:id', async (c) => {
 // GET /api/preferences — get UI preferences (sort, etc.)
 api.get('/preferences', (c) => {
   const config = readConfig()
-  return c.json({ sort: config.sort })
+  return c.json({ sort: config.sort, customOrder: config.customOrder })
 })
 
 // PATCH /api/preferences — update UI preferences
 api.patch('/preferences', async (c) => {
   const body = await c.req.json<{
     sort?: { field: string; order: string }
+    customOrder?: string[]
   }>()
 
-  if (body.sort) {
-    const { field, order } = body.sort
-    if ((field === 'name' || field === 'status') && (order === 'asc' || order === 'desc')) {
-      updateConfig((config) => {
+  updateConfig((config) => {
+    if (body.sort) {
+      const { field, order } = body.sort
+      if (
+        (field === 'name' || field === 'status' || field === 'custom') &&
+        (order === 'asc' || order === 'desc')
+      ) {
         config.sort = { field, order }
-      })
+      }
     }
-  }
 
+    if (Array.isArray(body.customOrder)) {
+      config.customOrder = body.customOrder
+    }
+  })
+
+  const config = readConfig()
+  broadcast({
+    type: 'preferences-updated',
+    data: { sort: config.sort, customOrder: config.customOrder },
+  })
   return c.json({ status: 'updated' })
 })
 
