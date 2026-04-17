@@ -24,6 +24,15 @@ export interface Project {
   visibility: Visibility
   listeners: Listener[]
   processState: ProcessState
+  /** True when Localhost started this process in the current session (log buffer exists). */
+  spawnedByUs: boolean
+}
+
+/** A single captured line of process output. */
+export interface LogLine {
+  stream: 'stdout' | 'stderr'
+  ts: number
+  text: string
 }
 
 /** Sort field for dashboard project cards */

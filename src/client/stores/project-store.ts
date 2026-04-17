@@ -20,7 +20,7 @@ function handleScanComplete(data: unknown) {
 function handleProcessStarted(data: unknown) {
   const { projectId } = data as { projectId: string }
   projects = projects.map((p) =>
-    p.id === projectId ? { ...p, processState: 'running' as const } : p,
+    p.id === projectId ? { ...p, processState: 'running' as const, spawnedByUs: true } : p,
   )
   notify()
 }

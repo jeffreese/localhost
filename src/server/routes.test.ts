@@ -26,6 +26,8 @@ vi.mock('./process-manager', () => ({
   startProject: vi.fn(),
   stopProject: vi.fn(() => Promise.resolve()),
   stopListener: vi.fn(),
+  getLogs: vi.fn(() => []),
+  hasLogs: vi.fn(() => false),
 }))
 
 vi.mock('./scanner', () => ({

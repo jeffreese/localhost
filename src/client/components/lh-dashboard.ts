@@ -2,11 +2,13 @@ import type { Project, SortField, SortOrder } from '@shared/types'
 import { LitElement, html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { connect } from '../sse-client'
+import { ConsoleStore } from '../stores/console-store'
 import { ProjectStore } from '../stores/project-store'
 import { UIStore } from '../stores/ui-store'
 import './lh-project-card'
 import './lh-port-table'
 import './lh-config-panel'
+import './lh-console'
 
 @customElement('lh-dashboard')
 export class LhDashboard extends LitElement {
@@ -33,6 +35,7 @@ export class LhDashboard extends LitElement {
     super.connectedCallback()
     connect()
     ProjectStore.init()
+    ConsoleStore.init()
 
     this.unsubProject = ProjectStore.subscribe(() => {
       this.projects = ProjectStore.getAll()
@@ -59,6 +62,7 @@ export class LhDashboard extends LitElement {
     this.unsubUI?.()
     UIStore.destroy()
     ProjectStore.destroy()
+    ConsoleStore.destroy()
   }
 
   private async loadProjects() {
@@ -300,6 +304,8 @@ export class LhDashboard extends LitElement {
             : ''
         }
       </div>
+
+      <lh-console></lh-console>
     `
   }
 }

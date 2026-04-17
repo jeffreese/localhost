@@ -1,6 +1,13 @@
 import { Hono } from 'hono'
 import { readConfig, updateConfig } from './config-store'
-import { detectAllListeners, startProject, stopListener, stopProject } from './process-manager'
+import {
+  detectAllListeners,
+  getLogs,
+  hasLogs,
+  startProject,
+  stopListener,
+  stopProject,
+} from './process-manager'
 import { scanAndPersist } from './scanner'
 import { broadcast, handleSSE } from './sse'
 
@@ -23,6 +30,7 @@ api.get('/projects', (c) => {
           : 'visible',
       listeners,
       processState: listeners.length > 0 ? 'running' : 'stopped',
+      spawnedByUs: hasLogs(id),
     }
   })
 
@@ -47,11 +55,18 @@ api.post('/scan', (c) => {
           : 'visible',
       listeners,
       processState: listeners.length > 0 ? 'running' : 'stopped',
+      spawnedByUs: hasLogs(id),
     }
   })
 
   broadcast({ type: 'scan-complete', data: result })
   return c.json(result)
+})
+
+// GET /api/projects/:id/logs — retained stdout/stderr ring buffer
+api.get('/projects/:id/logs', (c) => {
+  const projectId = decodeURIComponent(c.req.param('id'))
+  return c.json(getLogs(projectId))
 })
 
 // POST /api/projects/:id/start — start a project's dev server
@@ -72,9 +87,18 @@ api.post('/projects/:id/start', (c) => {
   const devScript = override?.devScript ?? cached.devScript
 
   try {
-    startProject(projectId, cached.path, cached.packageManager, devScript, (id, port) => {
-      broadcast({ type: 'port-detected', data: { projectId: id, port } })
-    })
+    startProject(
+      projectId,
+      cached.path,
+      cached.packageManager,
+      devScript,
+      (id, port) => {
+        broadcast({ type: 'port-detected', data: { projectId: id, port } })
+      },
+      (id, lines) => {
+        broadcast({ type: 'log', data: { projectId: id, lines } })
+      },
+    )
     broadcast({ type: 'process-started', data: { projectId } })
     return c.json({ status: 'started', projectId })
   } catch (err) {
