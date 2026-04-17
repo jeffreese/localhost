@@ -9,4 +9,7 @@
 - **TUI mode** — Terminal dashboard alternative to the browser UI
 - **Auto-scan** — File watcher on `~/Code/` instead of manual scan trigger
 - **Multiple scan roots** — Support scanning beyond `~/Code/`
-- **Log viewer** — Stream dev server stdout/stderr in the dashboard
+
+## Shipped
+
+- **Log viewer** — Stream dev server stdout/stderr in a bottom-drawer console (ADR-008)

@@ -1,6 +1,7 @@
 import type { Project, Visibility } from '@shared/types'
 import { LitElement, html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
+import { ConsoleStore } from '../stores/console-store'
 import { ProjectStore } from '../stores/project-store'
 
 @customElement('lh-project-card')
@@ -36,6 +37,10 @@ export class LhProjectCard extends LitElement {
 
   private handleOpen(port: number) {
     window.open(`http://localhost:${port}`, '_blank')
+  }
+
+  private handleConsole() {
+    ConsoleStore.open(this.project.id)
   }
 
   private toggleMenu() {
@@ -128,6 +133,18 @@ export class LhProjectCard extends LitElement {
                 @click=${() => this.handleStart()}
               >Start</button>
             `
+          }
+
+          ${
+            p.spawnedByUs
+              ? html`
+              <button
+                class="bg-surface-overlay text-secondary rounded-md px-sm py-xs text-xs hover:text-primary cursor-pointer"
+                @click=${() => this.handleConsole()}
+                title="Show console output"
+              >Console</button>
+            `
+              : ''
           }
 
           ${
