@@ -365,4 +365,221 @@ describe('config-store', () => {
     expect(config.groupConfig).toEqual({ groups: [], assignments: {} })
     expect(config.crashes).toEqual({})
   })
+
+  describe('integration: concurrent updates', () => {
+    it('10 rapid-fire updateConfig calls produce correct final state', async () => {
+      await readConfig()
+
+      const promises = Array.from({ length: 10 }, (_, i) =>
+        updateConfig((c) => {
+          c.hidden.push(`/path-${i}`)
+        }),
+      )
+      const results = await Promise.all(promises)
+
+      const final = results[results.length - 1]
+      for (let i = 0; i < 10; i++) {
+        expect(final.hidden).toContain(`/path-${i}`)
+      }
+      expect(final.hidden).toHaveLength(10)
+
+      const fromDisk = await readConfig()
+      expect(fromDisk.hidden).toHaveLength(10)
+    })
+
+    it('interleaved reads and writes maintain consistency', async () => {
+      await readConfig()
+
+      await updateConfig((c) => {
+        c.ignored.push('/first')
+      })
+      const mid = await readConfig()
+      expect(mid.ignored).toEqual(['/first'])
+
+      await updateConfig((c) => {
+        c.ignored.push('/second')
+      })
+      const final = await readConfig()
+      expect(final.ignored).toEqual(['/first', '/second'])
+    })
+
+    it('concurrent updates to different fields do not interfere', async () => {
+      await readConfig()
+
+      const results = await Promise.all([
+        updateConfig((c) => {
+          c.hidden.push('/hidden-path')
+        }),
+        updateConfig((c) => {
+          c.ignored.push('/ignored-path')
+        }),
+        updateConfig((c) => {
+          c.customOrder.push('proj-1')
+        }),
+      ])
+
+      const final = results[results.length - 1]
+      expect(final.hidden).toContain('/hidden-path')
+      expect(final.ignored).toContain('/ignored-path')
+      expect(final.customOrder).toContain('proj-1')
+    })
+  })
+
+  describe('integration: crash-during-write recovery', () => {
+    it('failed rename leaves original config intact on disk', async () => {
+      const configDir = join(tmpdir(), '.localhost')
+      const configPath = join(configDir, 'config.json')
+
+      await readConfig()
+      await updateConfig((c) => {
+        c.hidden.push('/before-crash')
+      })
+
+      renameOverride = async () => {
+        throw new Error('disk full')
+      }
+
+      const failing = updateConfig((c) => {
+        c.hidden.push('/during-crash')
+      })
+      await expect(failing).rejects.toThrow('disk full')
+
+      renameOverride = null
+
+      const onDisk = JSON.parse(readFileSync(configPath, 'utf-8'))
+      expect(onDisk.hidden).toContain('/before-crash')
+      expect(onDisk.hidden).not.toContain('/during-crash')
+    })
+
+    it('cache recovers after write failure — subsequent writes succeed', async () => {
+      await readConfig()
+      await updateConfig((c) => {
+        c.hidden.push('/stable')
+      })
+
+      renameOverride = async () => {
+        throw new Error('disk full')
+      }
+      const failing = updateConfig((c) => {
+        c.hidden.push('/lost')
+      })
+      await expect(failing).rejects.toThrow('disk full')
+
+      renameOverride = null
+
+      const recovered = await updateConfig((c) => {
+        c.hidden.push('/after-recovery')
+      })
+      expect(recovered.hidden).toContain('/stable')
+      expect(recovered.hidden).not.toContain('/lost')
+      expect(recovered.hidden).toContain('/after-recovery')
+    })
+
+    it('multiple consecutive write failures do not break the queue', async () => {
+      await readConfig()
+
+      renameOverride = async () => {
+        throw new Error('disk full')
+      }
+
+      await expect(
+        updateConfig((c) => {
+          c.hidden.push('/fail-1')
+        }),
+      ).rejects.toThrow('disk full')
+      await expect(
+        updateConfig((c) => {
+          c.hidden.push('/fail-2')
+        }),
+      ).rejects.toThrow('disk full')
+
+      renameOverride = null
+
+      const result = await updateConfig((c) => {
+        c.hidden.push('/success')
+      })
+      expect(result.hidden).toContain('/success')
+      expect(result.hidden).not.toContain('/fail-1')
+      expect(result.hidden).not.toContain('/fail-2')
+    })
+  })
+
+  describe('integration: cache invalidation', () => {
+    it('writeConfig updates cache — no stale reads after direct write', async () => {
+      const config = await readConfig()
+      config.ignored.push('/direct-write')
+      await writeConfig(config)
+
+      const cached = await readConfig()
+      expect(cached.ignored).toContain('/direct-write')
+    })
+
+    it('__resetCache followed by readConfig returns disk state', async () => {
+      const configDir = join(tmpdir(), '.localhost')
+      const configPath = join(configDir, 'config.json')
+
+      const config = await readConfig()
+      config.hidden.push('/in-memory')
+      await writeConfig(config)
+
+      const diskConfig = { ...config, hidden: ['/on-disk-only'] }
+      writeFileSync(configPath, JSON.stringify(diskConfig, null, 2))
+
+      const stale = await readConfig()
+      expect(stale.hidden).toContain('/in-memory')
+
+      __resetCache()
+      const fresh = await readConfig()
+      expect(fresh.hidden).toContain('/on-disk-only')
+      expect(fresh.hidden).not.toContain('/in-memory')
+    })
+
+    it('backward-compat defaults persist through concurrent updates', async () => {
+      const configDir = join(tmpdir(), '.localhost')
+      mkdirSync(configDir, { recursive: true })
+      const oldConfig = {
+        scanRoot: '/Users/test/Code',
+        projects: {},
+        pids: {},
+        overrides: {},
+        hidden: [],
+        ignored: [],
+        sort: { field: 'name', order: 'asc' },
+        customOrder: [],
+      }
+      writeFileSync(join(configDir, 'config.json'), JSON.stringify(oldConfig))
+
+      const results = await Promise.all([
+        updateConfig((c) => {
+          c.hidden.push('/path-a')
+        }),
+        updateConfig((c) => {
+          c.hidden.push('/path-b')
+        }),
+      ])
+
+      const final = results[results.length - 1]
+      expect(final.projectTypes['package.json'].name).toBe('node')
+      expect(final.groupConfig).toEqual({ groups: [], assignments: {} })
+      expect(final.crashes).toEqual({})
+      expect(final.hidden).toContain('/path-a')
+      expect(final.hidden).toContain('/path-b')
+    })
+
+    it('cache is independent across reset cycles', async () => {
+      const config1 = await readConfig()
+      config1.hidden.push('/cycle-1')
+      await writeConfig(config1)
+
+      __resetCache()
+
+      const config2 = await readConfig()
+      config2.ignored.push('/cycle-2')
+      await writeConfig(config2)
+
+      const final = await readConfig()
+      expect(final.hidden).toContain('/cycle-1')
+      expect(final.ignored).toContain('/cycle-2')
+    })
+  })
 })

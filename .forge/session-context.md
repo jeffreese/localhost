@@ -1,18 +1,15 @@
 # Session Context
 
 ## What's next
-- Task 2.5: Integration tests for concurrent updates, crash-during-write recovery, cache invalidation. This completes Epic 2.
-- After Epic 2 completes, Epic 3 (Process Group Lifecycle) is next.
+- Epic 2 (Config Store Hardening) is complete after task 2.5.
+- Next: Epic 3 (Process Group Lifecycle) — task 3.1: spawn with `detached: true`, pipe stdout/stderr.
 
 ## Key constraints (carried forward)
-- Config store now has three new optional fields: `projectTypes`, `groupConfig`, `crashes`. Old configs without them pass `isValidConfig` and get defaults via `applyDefaults`.
-- `applyDefaults` only fills missing fields — it never overwrites existing user-customized values.
-- `repairConfig` also handles all three new fields (for configs that fail `isValidConfig` but are still objects).
-- Cache clone boundaries remain solid: `applyDefaults` runs before `structuredClone` on the valid-config path.
-- All mutations must go through `updateConfig`. Direct `readConfig` → mutate → `writeConfig` bypasses the serialization queue.
-- `__resetCache()` is test-only (follows `__reset*` naming convention).
+- Config store is fully hardened: atomic writes, serialized queue, cached with structuredClone on all boundaries, backward-compat defaults for new fields.
+- 81 tests cover the config store: unit, clone boundaries, backward compat, concurrent updates (10 rapid-fire), crash-during-write recovery, cache invalidation.
+- `isValidConfig` validates core fields only — new fields may be absent on disk. `applyDefaults()` fills them. Documented coupling.
 
 ## Watch for
-- Task 2.5 should test backward-compat defaults under concurrent access — e.g., old config loaded, defaults applied, then concurrent updateConfig calls.
-- `vi.mock('node:fs/promises')` pattern in config-store.test.ts uses `renameOverride` for write-failure simulation.
-- Async mock consistency — every mock for an async function must use `async () =>` returns.
+- Epic 3 touches process-manager.ts heavily. The process manager reads/writes config via `updateConfig` — serialization is solid.
+- `renameOverride` mock pattern in config-store.test.ts is established for simulating write failures.
+- Process group signals on macOS need prototype validation (risk flag from retrofit spec).
