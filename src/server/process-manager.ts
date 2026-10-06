@@ -261,7 +261,7 @@ export async function detectAllListeners(): Promise<Record<string, Listener[]>> 
   for (const [id, cached] of Object.entries(config.projects)) {
     projectPaths[id] = cached.path
   }
-  const { listeners, cwdByPid } = enumerateListeners()
+  const { listeners, cwdByPid } = await enumerateListeners()
   return matchListenersToProjects(listeners, cwdByPid, projectPaths)
 }
 
