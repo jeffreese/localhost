@@ -232,13 +232,22 @@ describe('config-store', () => {
     expect(config.hidden).not.toContain('/should-not-persist')
   })
 
-  it('mutating cold-read return does not corrupt cache', async () => {
-    // Cold read through the isValidConfig path
+  it('mutating cold-read return does not corrupt cache (isValidConfig path)', async () => {
+    // Prime a valid config on disk, then clear cache to force a cold read
+    // through the isValidConfig branch (line 99 of config-store.ts)
+    const config = await readConfig()
+    config.hidden.push('/seed-value')
+    await writeConfig(config)
+    __resetCache()
+
+    // Cold read hits disk → isValidConfig → cachedConfig = structuredClone(parsed)
     const first = await readConfig()
+    expect(first.hidden).toContain('/seed-value')
     first.hidden.push('/mutated-by-caller')
 
     // Second read should return the original, not the mutated version
     const second = await readConfig()
+    expect(second.hidden).toContain('/seed-value')
     expect(second.hidden).not.toContain('/mutated-by-caller')
   })
 
