@@ -25,7 +25,7 @@ vi.mock('./process-manager', () => ({
   detectAllListeners: async () => ({}),
   startProject: vi.fn(async () => ({})),
   stopProject: vi.fn(async () => {}),
-  stopListener: vi.fn(),
+  stopListener: vi.fn(async () => {}),
   getLogs: vi.fn(() => []),
   hasLogs: vi.fn(() => false),
 }))
