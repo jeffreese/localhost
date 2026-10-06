@@ -243,25 +243,44 @@ describe('process-manager', () => {
       await stopProject('p1')
     })
 
-    it('kills stored PID and cleans config when no active child', async () => {
+    it('sends group SIGTERM to stored PID and cleans config when no active child', async () => {
       const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
       resetConfig({ pids: { p1: 9999 } })
 
       await stopProject('p1')
 
-      expect(killSpy).toHaveBeenCalledWith(9999, 'SIGTERM')
+      expect(killSpy).toHaveBeenCalledWith(-9999, 'SIGTERM')
       expect(storedConfig.pids.p1).toBeUndefined()
       killSpy.mockRestore()
     })
 
-    it('sends SIGTERM to active child and resolves on exit', async () => {
+    it('sends group SIGTERM to active child process group and resolves on exit', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
 
       const stopPromise = stopProject('p1')
-      expect(fakeChild.kill).toHaveBeenCalledWith('SIGTERM')
+      expect(killSpy).toHaveBeenCalledWith(-12345, 'SIGTERM')
 
       fakeChild.emit('exit', 0, null)
       await stopPromise
+      killSpy.mockRestore()
+    })
+
+    it('escalates to group SIGKILL after 5s timeout', async () => {
+      vi.useFakeTimers()
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+
+      const stopPromise = stopProject('p1')
+      expect(killSpy).toHaveBeenCalledWith(-12345, 'SIGTERM')
+
+      vi.advanceTimersByTime(5000)
+      expect(killSpy).toHaveBeenCalledWith(-12345, 'SIGKILL')
+
+      fakeChild.emit('exit', 0, null)
+      await stopPromise
+      killSpy.mockRestore()
+      vi.useRealTimers()
     })
   })
 })
