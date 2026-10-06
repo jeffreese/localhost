@@ -158,7 +158,7 @@ export async function startProject(
   child.stdout?.on('data', (d) => handleChunk('stdout', d))
   child.stderr?.on('data', (d) => handleChunk('stderr', d))
 
-  child.on('exit', async () => {
+  child.on('exit', () => {
     // Flush any partial-line tails so the final line isn't silently lost.
     const tailLines: LogLine[] = []
     for (const stream of ['stdout', 'stderr'] as const) {
@@ -174,9 +174,9 @@ export async function startProject(
     flushBatch()
 
     activeProcesses.delete(projectId)
-    await updateConfig((config) => {
+    updateConfig((config) => {
       delete config.pids[projectId]
-    })
+    }).catch(() => {})
   })
 
   return child
@@ -203,6 +203,7 @@ export function stopProject(projectId: string): Promise<void> {
           }
         })
         .then(() => resolve())
+        .catch(() => resolve())
       return
     }
 
@@ -215,7 +216,9 @@ export function stopProject(projectId: string): Promise<void> {
       activeProcesses.delete(projectId)
       updateConfig((c) => {
         delete c.pids[projectId]
-      }).then(() => resolve())
+      })
+        .then(() => resolve())
+        .catch(() => resolve())
     })
 
     child.kill('SIGTERM')
