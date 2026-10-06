@@ -232,6 +232,30 @@ describe('config-store', () => {
     expect(config.hidden).not.toContain('/should-not-persist')
   })
 
+  it('mutating cold-read return does not corrupt cache', async () => {
+    // Cold read through the isValidConfig path
+    const first = await readConfig()
+    first.hidden.push('/mutated-by-caller')
+
+    // Second read should return the original, not the mutated version
+    const second = await readConfig()
+    expect(second.hidden).not.toContain('/mutated-by-caller')
+  })
+
+  it('mutating object after writeConfig does not corrupt cache', async () => {
+    const config = await readConfig()
+    config.hidden.push('/before-write')
+    await writeConfig(config)
+
+    // Mutate the object that was passed to writeConfig
+    config.hidden.push('/after-write-mutation')
+
+    // Cache should not see the post-write mutation
+    const cached = await readConfig()
+    expect(cached.hidden).toContain('/before-write')
+    expect(cached.hidden).not.toContain('/after-write-mutation')
+  })
+
   it('readConfig recovery paths use atomic writes (no .tmp lingers)', async () => {
     const configDir = join(tmpdir(), '.localhost')
     const configPath = join(configDir, 'config.json')
