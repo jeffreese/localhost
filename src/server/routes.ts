@@ -14,9 +14,9 @@ import { broadcast, handleSSE } from './sse'
 const api = new Hono()
 
 // GET /api/projects — list all projects with current state
-api.get('/projects', (c) => {
-  const config = readConfig()
-  const listenerMap = detectAllListeners()
+api.get('/projects', async (c) => {
+  const config = await readConfig()
+  const listenerMap = await detectAllListeners()
 
   const projects = Object.entries(config.projects).map(([id, cached]) => {
     const listeners = listenerMap[id] ?? []
@@ -38,10 +38,10 @@ api.get('/projects', (c) => {
 })
 
 // POST /api/scan — trigger a rescan
-api.post('/scan', (c) => {
-  const projects = scanAndPersist()
-  const config = readConfig()
-  const listenerMap = detectAllListeners()
+api.post('/scan', async (c) => {
+  const projects = await scanAndPersist()
+  const config = await readConfig()
+  const listenerMap = await detectAllListeners()
 
   const result = Array.from(projects.entries()).map(([id, cached]) => {
     const listeners = listenerMap[id] ?? []
@@ -70,9 +70,9 @@ api.get('/projects/:id/logs', (c) => {
 })
 
 // POST /api/projects/:id/start — start a project's dev server
-api.post('/projects/:id/start', (c) => {
+api.post('/projects/:id/start', async (c) => {
   const projectId = decodeURIComponent(c.req.param('id'))
-  const config = readConfig()
+  const config = await readConfig()
   const cached = config.projects[projectId]
 
   if (!cached) {
@@ -87,7 +87,7 @@ api.post('/projects/:id/start', (c) => {
   const devScript = override?.devScript ?? cached.devScript
 
   try {
-    startProject(
+    await startProject(
       projectId,
       cached.path,
       cached.packageManager,
@@ -112,7 +112,7 @@ api.post('/projects/:id/stop', async (c) => {
   const projectId = decodeURIComponent(c.req.param('id'))
 
   // Kill all detected listeners for this project
-  const listenerMap = detectAllListeners()
+  const listenerMap = await detectAllListeners()
   const listeners = listenerMap[projectId] ?? []
   for (const listener of listeners) {
     stopListener(listener.pid)
@@ -145,7 +145,7 @@ api.patch('/projects/:id', async (c) => {
     devScript?: string
   }>()
 
-  updateConfig((config) => {
+  await updateConfig((config) => {
     if (body.visibility) {
       // Remove from both lists first
       config.hidden = config.hidden.filter((p) => p !== projectId)
@@ -176,8 +176,8 @@ api.patch('/projects/:id', async (c) => {
 })
 
 // GET /api/preferences — get UI preferences (sort, etc.)
-api.get('/preferences', (c) => {
-  const config = readConfig()
+api.get('/preferences', async (c) => {
+  const config = await readConfig()
   return c.json({ sort: config.sort, customOrder: config.customOrder })
 })
 
@@ -188,7 +188,7 @@ api.patch('/preferences', async (c) => {
     customOrder?: string[]
   }>()
 
-  updateConfig((config) => {
+  await updateConfig((config) => {
     if (body.sort) {
       const { field, order } = body.sort
       if (
@@ -204,7 +204,7 @@ api.patch('/preferences', async (c) => {
     }
   })
 
-  const config = readConfig()
+  const config = await readConfig()
   broadcast({
     type: 'preferences-updated',
     data: { sort: config.sort, customOrder: config.customOrder },

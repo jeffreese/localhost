@@ -15,7 +15,7 @@ vi.mock('./config-store', async () => {
   const actual = await vi.importActual<typeof import('./config-store')>('./config-store')
   return {
     ...actual,
-    readConfig: () => ({
+    readConfig: async () => ({
       scanRoot: testRoot,
       projects: {},
       pids: {},
@@ -59,54 +59,54 @@ describe('scanner', () => {
     rmSync(testRoot, { recursive: true, force: true })
   })
 
-  it('discovers projects with package.json', () => {
+  it('discovers projects with package.json', async () => {
     makeProject('my-app')
-    const results = scan()
+    const results = await scan()
     expect(results.size).toBe(1)
     const project = firstProject(results)
     expect(project.name).toBe('my-app')
     expect(project.devScript).toBe('dev')
   })
 
-  it('detects pnpm from lock file', () => {
+  it('detects pnpm from lock file', async () => {
     makeProject('pnpm-app', { lockFile: 'pnpm-lock.yaml' })
-    const results = scan()
+    const results = await scan()
     const project = firstProject(results)
     expect(project.packageManager).toBe('pnpm')
   })
 
-  it('detects yarn from lock file', () => {
+  it('detects yarn from lock file', async () => {
     makeProject('yarn-app', { lockFile: 'yarn.lock' })
-    const results = scan()
+    const results = await scan()
     const project = firstProject(results)
     expect(project.packageManager).toBe('yarn')
   })
 
-  it('defaults to npm when no lock file', () => {
+  it('defaults to npm when no lock file', async () => {
     makeProject('npm-app')
-    const results = scan()
+    const results = await scan()
     const project = firstProject(results)
     expect(project.packageManager).toBe('npm')
   })
 
-  it('detects start script when dev is missing', () => {
+  it('detects start script when dev is missing', async () => {
     makeProject('start-app', { scripts: { start: 'node index.js' } })
-    const results = scan()
+    const results = await scan()
     const project = firstProject(results)
     expect(project.devScript).toBe('start')
   })
 
-  it('returns null devScript when none found', () => {
+  it('returns null devScript when none found', async () => {
     makeProject('no-script-app', { scripts: { build: 'tsc' } })
-    const results = scan()
+    const results = await scan()
     const project = firstProject(results)
     expect(project.devScript).toBeNull()
   })
 
-  it('discovers multiple projects', () => {
+  it('discovers multiple projects', async () => {
     makeProject('app-a')
     makeProject('app-b')
-    const results = scan()
+    const results = await scan()
     expect(results.size).toBe(2)
   })
 })

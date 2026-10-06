@@ -4,8 +4,6 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // We need to mock the config path before importing the module
-const testDir = join(tmpdir(), `localhost-test-${Date.now()}`)
-const testConfigPath = join(testDir, 'config.json')
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof import('node:os')>('node:os')
@@ -33,8 +31,8 @@ describe('config-store', () => {
     }
   })
 
-  it('creates default config when none exists', () => {
-    const config = readConfig()
+  it('creates default config when none exists', async () => {
+    const config = await readConfig()
     expect(config.scanRoot).toContain('Code')
     expect(config.projects).toEqual({})
     expect(config.pids).toEqual({})
@@ -44,54 +42,54 @@ describe('config-store', () => {
     expect(config.customOrder).toEqual([])
   })
 
-  it('reads existing config', () => {
+  it('reads existing config', async () => {
     // First create default
-    readConfig()
-    const config = readConfig()
+    await readConfig()
+    const config = await readConfig()
     expect(config.scanRoot).toContain('Code')
   })
 
-  it('recovers from corrupt JSON', () => {
+  it('recovers from corrupt JSON', async () => {
     const configDir = join(tmpdir(), '.localhost')
     mkdirSync(configDir, { recursive: true })
     writeFileSync(join(configDir, 'config.json'), '{not valid json')
 
-    const config = readConfig()
+    const config = await readConfig()
     expect(config.projects).toEqual({})
     // Backup should exist
     const files = readdirSync(configDir)
     expect(files.some((f: string) => f.includes('.backup.'))).toBe(true)
   })
 
-  it('repairs partial config with missing fields', () => {
+  it('repairs partial config with missing fields', async () => {
     const configDir = join(tmpdir(), '.localhost')
     mkdirSync(configDir, { recursive: true })
     writeFileSync(join(configDir, 'config.json'), JSON.stringify({ scanRoot: '/custom/path' }))
 
-    const config = readConfig()
+    const config = await readConfig()
     expect(config.scanRoot).toBe('/custom/path')
     expect(config.projects).toEqual({})
     expect(config.hidden).toEqual([])
     expect(config.customOrder).toEqual([])
   })
 
-  it('writes and reads back config', () => {
-    const config = readConfig()
+  it('writes and reads back config', async () => {
+    const config = await readConfig()
     config.hidden.push('/some/path')
-    writeConfig(config)
+    await writeConfig(config)
 
-    const reloaded = readConfig()
+    const reloaded = await readConfig()
     expect(reloaded.hidden).toEqual(['/some/path'])
   })
 
-  it('updateConfig applies mutation and persists', () => {
-    readConfig() // ensure exists
-    const result = updateConfig((c) => {
+  it('updateConfig applies mutation and persists', async () => {
+    await readConfig() // ensure exists
+    const result = await updateConfig((c) => {
       c.ignored.push('/ignore/me')
     })
     expect(result.ignored).toEqual(['/ignore/me'])
 
-    const reloaded = readConfig()
+    const reloaded = await readConfig()
     expect(reloaded.ignored).toEqual(['/ignore/me'])
   })
 })

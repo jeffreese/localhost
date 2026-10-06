@@ -14,9 +14,9 @@ let storedConfig: LocalhostConfig = {
 }
 
 vi.mock('./config-store', () => ({
-  readConfig: () => storedConfig,
-  writeConfig: vi.fn(),
-  updateConfig: vi.fn((fn: (c: LocalhostConfig) => void) => {
+  readConfig: async () => storedConfig,
+  writeConfig: vi.fn(async () => {}),
+  updateConfig: vi.fn(async (fn: (c: LocalhostConfig) => void) => {
     fn(storedConfig)
     return storedConfig
   }),
@@ -69,13 +69,13 @@ function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
 
 describe('process-manager', () => {
   describe('detectAllListeners', () => {
-    it('returns empty object when no projects exist', () => {
+    it('returns empty object when no projects exist', async () => {
       resetConfig()
-      const result = detectAllListeners()
+      const result = await detectAllListeners()
       expect(result).toEqual({})
     })
 
-    it('returns empty object when no listeners match', () => {
+    it('returns empty object when no listeners match', async () => {
       resetConfig({
         projects: {
           '/tmp/my-app': {
@@ -87,7 +87,7 @@ describe('process-manager', () => {
           },
         },
       })
-      const result = detectAllListeners()
+      const result = await detectAllListeners()
       expect(result).toEqual({})
     })
   })
@@ -125,8 +125,8 @@ describe('process-manager', () => {
       resetConfig()
     })
 
-    it('captures stdout lines into the project buffer', () => {
-      startProject('p1', '/tmp/p1', 'npm', 'dev')
+    it('captures stdout lines into the project buffer', async () => {
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
       fakeChild.stdout.emit('data', Buffer.from('line one\nline two\n'))
 
       const logs = getLogs('p1')
@@ -135,8 +135,8 @@ describe('process-manager', () => {
       expect(hasLogs('p1')).toBe(true)
     })
 
-    it('caps the buffer at 500 lines, dropping the oldest', () => {
-      startProject('p1', '/tmp/p1', 'npm', 'dev')
+    it('caps the buffer at 500 lines, dropping the oldest', async () => {
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
       const chunk = `${Array.from({ length: 600 }, (_, i) => `line ${i}`).join('\n')}\n`
       fakeChild.stdout.emit('data', Buffer.from(chunk))
 
@@ -146,8 +146,8 @@ describe('process-manager', () => {
       expect(logs[logs.length - 1].text).toBe('line 599')
     })
 
-    it('flushes a partial-line tail on process exit', () => {
-      startProject('p1', '/tmp/p1', 'npm', 'dev')
+    it('flushes a partial-line tail on process exit', async () => {
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
       fakeChild.stdout.emit('data', Buffer.from('complete\nno-newline-tail'))
       fakeChild.emit('exit', 0, null)
 
@@ -155,8 +155,8 @@ describe('process-manager', () => {
       expect(logs.map((l) => l.text)).toEqual(['complete', 'no-newline-tail'])
     })
 
-    it('retains the buffer after the process exits', () => {
-      startProject('p1', '/tmp/p1', 'npm', 'dev')
+    it('retains the buffer after the process exits', async () => {
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
       fakeChild.stdout.emit('data', Buffer.from('hello\n'))
       fakeChild.emit('exit', 0, null)
 
@@ -164,15 +164,15 @@ describe('process-manager', () => {
       expect(getLogs('p1').map((l) => l.text)).toEqual(['hello'])
     })
 
-    it('clears the buffer when a project is restarted', () => {
-      startProject('p1', '/tmp/p1', 'npm', 'dev')
+    it('clears the buffer when a project is restarted', async () => {
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
       fakeChild.stdout.emit('data', Buffer.from('first run\n'))
       fakeChild.emit('exit', 0, null)
 
       // Fresh fake for the second run so the original's listeners don't fire.
       fakeChild = new FakeChild()
       spawnMock.mockReturnValue(fakeChild)
-      startProject('p1', '/tmp/p1', 'npm', 'dev')
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
 
       const logs = getLogs('p1')
       expect(logs).toEqual([])
@@ -180,7 +180,7 @@ describe('process-manager', () => {
 
     it('batches new lines and invokes onLogs after the debounce window', async () => {
       const onLogs = vi.fn()
-      startProject('p1', '/tmp/p1', 'npm', 'dev', undefined, onLogs)
+      await startProject('p1', '/tmp/p1', 'npm', 'dev', undefined, onLogs)
       fakeChild.stdout.emit('data', Buffer.from('one\ntwo\n'))
       fakeChild.stdout.emit('data', Buffer.from('three\n'))
 

@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { LocalhostConfig } from '@shared/types'
@@ -19,10 +20,8 @@ function defaultConfig(): LocalhostConfig {
   }
 }
 
-function ensureDir() {
-  if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true })
-  }
+async function ensureDir() {
+  await mkdir(CONFIG_DIR, { recursive: true })
 }
 
 function isValidConfig(data: unknown): data is LocalhostConfig {
@@ -70,21 +69,21 @@ function repairConfig(data: Record<string, unknown>): LocalhostConfig {
   }
 }
 
-export function readConfig(): LocalhostConfig {
-  ensureDir()
+export async function readConfig(): Promise<LocalhostConfig> {
+  await ensureDir()
 
   if (!existsSync(CONFIG_PATH)) {
     const config = defaultConfig()
-    writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
+    await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2))
     return config
   }
 
   let raw: string
   try {
-    raw = readFileSync(CONFIG_PATH, 'utf-8')
+    raw = await readFile(CONFIG_PATH, 'utf-8')
   } catch {
     const config = defaultConfig()
-    writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
+    await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2))
     return config
   }
 
@@ -92,12 +91,11 @@ export function readConfig(): LocalhostConfig {
   try {
     parsed = JSON.parse(raw)
   } catch {
-    // Corrupt JSON — backup and recreate
     const backupPath = `${CONFIG_PATH}.backup.${Date.now()}`
-    renameSync(CONFIG_PATH, backupPath)
+    await rename(CONFIG_PATH, backupPath)
     console.warn(`Corrupt config backed up to ${backupPath}`)
     const config = defaultConfig()
-    writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
+    await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2))
     return config
   }
 
@@ -105,31 +103,31 @@ export function readConfig(): LocalhostConfig {
     return parsed
   }
 
-  // Partially valid — repair missing fields
   if (typeof parsed === 'object' && parsed !== null) {
     const config = repairConfig(parsed as Record<string, unknown>)
-    writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
+    await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2))
     return config
   }
 
-  // Unrecoverable — backup and recreate
   const backupPath = `${CONFIG_PATH}.backup.${Date.now()}`
-  renameSync(CONFIG_PATH, backupPath)
+  await rename(CONFIG_PATH, backupPath)
   console.warn(`Invalid config backed up to ${backupPath}`)
   const config = defaultConfig()
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
+  await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2))
   return config
 }
 
-export function writeConfig(config: LocalhostConfig): void {
-  ensureDir()
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
+export async function writeConfig(config: LocalhostConfig): Promise<void> {
+  await ensureDir()
+  await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2))
 }
 
-export function updateConfig(updater: (config: LocalhostConfig) => void): LocalhostConfig {
-  const config = readConfig()
+export async function updateConfig(
+  updater: (config: LocalhostConfig) => void,
+): Promise<LocalhostConfig> {
+  const config = await readConfig()
   updater(config)
-  writeConfig(config)
+  await writeConfig(config)
   return config
 }
 
