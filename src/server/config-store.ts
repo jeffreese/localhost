@@ -68,7 +68,11 @@ function repairConfig(data: Record<string, unknown>): LocalhostConfig {
   }
 }
 
+let cachedConfig: LocalhostConfig | null = null
+
 export async function readConfig(): Promise<LocalhostConfig> {
+  if (cachedConfig) return structuredClone(cachedConfig)
+
   await ensureDir()
 
   let raw: string
@@ -93,6 +97,7 @@ export async function readConfig(): Promise<LocalhostConfig> {
   }
 
   if (isValidConfig(parsed)) {
+    cachedConfig = structuredClone(parsed)
     return parsed
   }
 
@@ -115,6 +120,7 @@ export async function writeConfig(config: LocalhostConfig): Promise<void> {
   const tmpPath = `${CONFIG_PATH}.tmp`
   await writeFile(tmpPath, JSON.stringify(config, null, 2))
   await rename(tmpPath, CONFIG_PATH)
+  cachedConfig = structuredClone(config)
 }
 
 let writeQueue: Promise<void> = Promise.resolve()
@@ -132,6 +138,10 @@ export function updateConfig(updater: (config: LocalhostConfig) => void): Promis
       }
     })
   })
+}
+
+export function __resetCache() {
+  cachedConfig = null
 }
 
 export { CONFIG_DIR, CONFIG_PATH }
