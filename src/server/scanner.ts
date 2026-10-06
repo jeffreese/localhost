@@ -20,15 +20,10 @@ async function detectPackageManager(projectPath: string): Promise<PackageManager
   return 'npm'
 }
 
-async function detectDevScript(projectPath: string): Promise<string | null> {
-  try {
-    const pkg = JSON.parse(await readFile(join(projectPath, 'package.json'), 'utf-8'))
-    const scripts = pkg.scripts || {}
-    for (const name of ['dev', 'start', 'serve']) {
-      if (scripts[name]) return name
-    }
-  } catch {
-    // Ignore parse errors
+function detectDevScript(pkg: Record<string, unknown>): string | null {
+  const scripts = (pkg.scripts || {}) as Record<string, string>
+  for (const name of ['dev', 'start', 'serve']) {
+    if (scripts[name]) return name
   }
   return null
 }
@@ -74,13 +69,17 @@ async function walk(
     const pkgPath = join(dir, 'package.json')
     try {
       const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
-      const id = dir // Use absolute path as ID
+      const id = dir
+      const [packageManager, githubUrl] = await Promise.all([
+        detectPackageManager(dir),
+        detectGithubUrl(dir),
+      ])
       results.set(id, {
         name: pkg.name || dir.split('/').pop() || 'unknown',
         path: dir,
-        packageManager: await detectPackageManager(dir),
-        devScript: await detectDevScript(dir),
-        githubUrl: await detectGithubUrl(dir),
+        packageManager,
+        devScript: detectDevScript(pkg),
+        githubUrl,
       })
     } catch {
       // Skip unparseable package.json
