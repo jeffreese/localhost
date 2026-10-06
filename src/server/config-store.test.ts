@@ -107,6 +107,51 @@ describe('config-store', () => {
     expect(written.hidden).toContain('/atomic/test')
   })
 
+  it('concurrent updateConfig calls are serialized (no lost writes)', async () => {
+    await readConfig() // ensure exists
+
+    const results = await Promise.all([
+      updateConfig((c) => {
+        c.hidden.push('/path-a')
+      }),
+      updateConfig((c) => {
+        c.hidden.push('/path-b')
+      }),
+      updateConfig((c) => {
+        c.hidden.push('/path-c')
+      }),
+    ])
+
+    // Each result should reflect its own write plus all prior writes
+    expect(results[0].hidden).toContain('/path-a')
+    expect(results[1].hidden).toContain('/path-a')
+    expect(results[1].hidden).toContain('/path-b')
+    expect(results[2].hidden).toContain('/path-a')
+    expect(results[2].hidden).toContain('/path-b')
+    expect(results[2].hidden).toContain('/path-c')
+
+    // Final state on disk should have all three
+    const final = await readConfig()
+    expect(final.hidden).toContain('/path-a')
+    expect(final.hidden).toContain('/path-b')
+    expect(final.hidden).toContain('/path-c')
+  })
+
+  it('updateConfig queue survives a failed updater', async () => {
+    await readConfig() // ensure exists
+
+    const failing = updateConfig(() => {
+      throw new Error('updater boom')
+    })
+    await expect(failing).rejects.toThrow('updater boom')
+
+    // Queue should still work after the failure
+    const result = await updateConfig((c) => {
+      c.ignored.push('/after-failure')
+    })
+    expect(result.ignored).toContain('/after-failure')
+  })
+
   it('readConfig recovery paths use atomic writes (no .tmp lingers)', async () => {
     const configDir = join(tmpdir(), '.localhost')
     const configPath = join(configDir, 'config.json')

@@ -117,13 +117,21 @@ export async function writeConfig(config: LocalhostConfig): Promise<void> {
   await rename(tmpPath, CONFIG_PATH)
 }
 
-export async function updateConfig(
-  updater: (config: LocalhostConfig) => void,
-): Promise<LocalhostConfig> {
-  const config = await readConfig()
-  updater(config)
-  await writeConfig(config)
-  return config
+let writeQueue: Promise<void> = Promise.resolve()
+
+export function updateConfig(updater: (config: LocalhostConfig) => void): Promise<LocalhostConfig> {
+  return new Promise<LocalhostConfig>((resolve, reject) => {
+    writeQueue = writeQueue.then(async () => {
+      try {
+        const config = await readConfig()
+        updater(config)
+        await writeConfig(config)
+        resolve(config)
+      } catch (err) {
+        reject(err)
+      }
+    })
+  })
 }
 
 export { CONFIG_DIR, CONFIG_PATH }
