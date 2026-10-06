@@ -1,19 +1,19 @@
 # Session Context
 
 ## What's next
-- Task 3.4: Shutdown handlers in index.ts — SIGTERM/SIGINT/exit → kill all active process groups with grace period.
-- Tasks 3.5-3.7 remain in Epic 3 (Process Group Lifecycle).
+- Task 3.5: Startup PID cleanup — iterate `config.pids` on server start, verify each with `verifyPid`, remove dead/stale.
+- Tasks 3.6-3.7 remain in Epic 3 (Process Group Lifecycle).
 
 ## Key constraints (carried forward)
 - `startProject` spawns with `detached: true`, `stdio: ['ignore', 'pipe', 'pipe']`. PGID = child PID via setsid().
-- `stopProject` sends group signals with PID verification: checks alive (`kill(pid, 0)`) and cwd match (via lsof) before signaling. Stale PIDs cleaned from config without signal.
-- `stopListener` retains positive-PID signals — targets individual listeners, not process groups.
-- Config store fully hardened (Epic 2): atomic writes, serialized queue, cached with structuredClone boundaries, backward-compat defaults.
-- `verifyPid(pid, expectedPath)` exported from process-manager.ts — reuses `parseCwdOutput` from listener-scanner.ts. Returns false for dead PIDs and cwd mismatches.
+- `stopProject` sends group signals with PID verification: checks alive (`kill(pid, 0)`) and cwd match before signaling.
+- `verifyPid(pid, expectedPath)` exported from process-manager.ts — reuses `parseCwdOutput` from listener-scanner.ts.
+- Shutdown handlers in index.ts: SIGTERM/SIGINT → gracefulShutdown (SIGTERM all groups, 3s grace, SIGKILL survivors, exit). Exit handler does synchronous SIGKILL sweep.
+- `shuttingDown` guard prevents double invocation on rapid SIGINT+SIGTERM.
+- `getActiveProcesses()` returns the live Map — shutdown iterates it directly.
 
 ## Watch for
-- Task 3.4 needs `getActiveProcesses()` to iterate all running process groups for shutdown cleanup.
-- Task 3.5 will reuse `verifyPid` for startup PID cleanup — iterate `config.pids`, verify each, remove stale.
+- Task 3.5 reuses `verifyPid` — iterate `config.pids`, verify each, remove stale on startup. Runs before the first background poll tick.
 - Task 3.6 (double exit handler) — stopProject registers a second `child.on('exit')` alongside startProject's. Don't fix before 3.6.
-- The `incomplete-test-config-after-schema-change` pattern — grep for `as <Type>` casts in tests after extending shared types.
-- Every PR this session needed 2 Crucible rounds due to test coverage gaps on edge cases. Write defensive path tests upfront.
+- Task 5.5 depends on 3.4 — poller start/stop wired to server lifecycle.
+- The `mutable-cache-reference` pattern hit again in PR #21 (2nd occurrence). readConfig mock in process-manager tests now uses structuredClone. Watch for this in new test files.
