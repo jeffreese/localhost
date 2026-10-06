@@ -1,15 +1,14 @@
 # Session Context
 
 ## Active decisions
-- Listener scanner uses `execFile` (not `exec`) for lsof calls — avoids shell interpolation, args passed as array.
-- `execAsync` helper resolves with stdout on both success and error — lsof exits 1 when some -c filters have no matches but still outputs valid data.
-- `COMMAND_FLAGS` changed from string to array (`flatMap`) to work with `execFile` arg-based API.
+- `stopProject` refactored: no-child path uses clean async/await, child path keeps `new Promise` wrapper (event-based exit handling requires it). Config cleanup in child exit handler is fire-and-forget with `.catch(() => {})`.
+- `getPortOwner` removed (was dead code using `execSync`). Also completed task 4.1.
+- `stopListener` made async for API consistency, though `process.kill` is inherently synchronous.
 
 ## Gotchas discovered
-- Crucible flags sequential awaits on independent operations — use `Promise.all` where calls are independent (learned from task 1.2).
-- Crucible flags redundant file reads — pass already-parsed data to helpers instead of re-reading (learned from task 1.2).
-- `stopProject` still uses `new Promise` wrapping with `.then()` chains — task 1.4 should clean this up.
+- Task 1.5 (verify zero *Sync calls) should now be straightforward — config-store, scanner, listener-scanner, and process-manager are all async.
+- The `existsSync` in config-store.ts is the only remaining sync call in production server code (intentional — see task 1.1 decision).
 
 ## Conventions established
-- Test mocks for async functions use `async () =>` returns.
-- Fire-and-forget `updateConfig` in event handlers uses `.catch(() => {})`.
+- Fire-and-forget async cleanup in event handlers: use `.catch(() => {})`, not async callbacks.
+- `new Promise` wrapper is acceptable when waiting on EventEmitter events — don't force async/await where the event model doesn't support it.
