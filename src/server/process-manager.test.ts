@@ -23,7 +23,7 @@ vi.mock('./config-store', () => ({
 }))
 
 vi.mock('./listener-scanner', () => ({
-  enumerateListeners: () => ({ listeners: [], cwdByPid: new Map() }),
+  enumerateListeners: async () => ({ listeners: [], cwdByPid: new Map() }),
   matchListenersToProjects: () => ({}),
 }))
 

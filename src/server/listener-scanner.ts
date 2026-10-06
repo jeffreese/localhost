@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import type { Listener } from '@shared/types'
 
 interface RawListener {
@@ -6,20 +6,12 @@ interface RawListener {
   port: number
 }
 
-/**
- * Run a command and return stdout even if the process exits non-zero.
- * lsof exits 1 when some -c filters have no matches, but still outputs valid data.
- */
-function execSyncSafe(command: string): string {
-  try {
-    return execSync(command, { encoding: 'utf-8', timeout: 5000 })
-  } catch (err: unknown) {
-    // execSync throws on non-zero exit, but stdout may still have valid data
-    if (err && typeof err === 'object' && 'stdout' in err && typeof err.stdout === 'string') {
-      return err.stdout
-    }
-    return ''
-  }
+function execAsync(command: string, args: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    execFile(command, args, { encoding: 'utf-8', timeout: 5000 }, (_err, stdout) => {
+      resolve(stdout ?? '')
+    })
+  })
 }
 
 /** Commands that commonly run dev servers */
@@ -29,7 +21,7 @@ const DEV_SERVER_COMMANDS = ['node', 'bun', 'deno']
  * Build the lsof -c flags to filter by command name.
  * Multiple -c flags are OR'd together by lsof.
  */
-const COMMAND_FLAGS = DEV_SERVER_COMMANDS.map((c) => `-c ${c}`).join(' ')
+const COMMAND_FLAGS = DEV_SERVER_COMMANDS.flatMap((c) => ['-c', c])
 
 /**
  * Enumerate TCP listeners for dev-server processes and resolve their cwds
@@ -37,14 +29,26 @@ const COMMAND_FLAGS = DEV_SERVER_COMMANDS.map((c) => `-c ${c}`).join(' ')
  * 1. lsof -c node -c bun -c deno -iTCP -sTCP:LISTEN → pid+port for dev servers only
  * 2. lsof -c node -c bun -c deno -a -d cwd → pid+cwd for all dev server processes
  */
-export function enumerateListeners(): { listeners: RawListener[]; cwdByPid: Map<number, string> } {
-  const listenerOutput = execSyncSafe(`lsof ${COMMAND_FLAGS} -a -iTCP -sTCP:LISTEN -P -n -F pn`)
+export async function enumerateListeners(): Promise<{
+  listeners: RawListener[]
+  cwdByPid: Map<number, string>
+}> {
+  const listenerOutput = await execAsync('lsof', [
+    ...COMMAND_FLAGS,
+    '-a',
+    '-iTCP',
+    '-sTCP:LISTEN',
+    '-P',
+    '-n',
+    '-F',
+    'pn',
+  ])
   const listeners = parseListenerOutput(listenerOutput)
   if (listeners.length === 0) {
     return { listeners, cwdByPid: new Map() }
   }
 
-  const cwdOutput = execSyncSafe(`lsof ${COMMAND_FLAGS} -a -d cwd -F pn`)
+  const cwdOutput = await execAsync('lsof', [...COMMAND_FLAGS, '-a', '-d', 'cwd', '-F', 'pn'])
   const cwdByPid = parseCwdOutput(cwdOutput)
   return { listeners, cwdByPid }
 }
@@ -85,7 +89,6 @@ export function parseCwdOutput(output: string): Map<number, string> {
       currentPid = Number.parseInt(line.slice(1), 10)
     } else if (line.startsWith('n') && currentPid !== null && line.length > 1) {
       const path = line.slice(1)
-      // Only store filesystem paths (skip socket descriptors, etc.)
       if (path.startsWith('/')) {
         result.set(currentPid, path)
       }
@@ -131,7 +134,7 @@ export function matchListenersToProjects(
           result[projectId].push({ pid: listener.pid, port: listener.port })
           claimed.add(key)
         }
-        break // First (most specific) project wins
+        break
       }
     }
   }
