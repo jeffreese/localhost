@@ -1,17 +1,19 @@
 # Session Context
 
 ## What's next
-- Task 3.3: PID verification before signaling — check PID alive and cwd matches project path.
-- Tasks 3.4-3.7 continue the Process Group Lifecycle epic.
+- Task 3.4: Shutdown handlers in index.ts — SIGTERM/SIGINT/exit → kill all active process groups with grace period.
+- Tasks 3.5-3.7 remain in Epic 3 (Process Group Lifecycle).
 
 ## Key constraints (carried forward)
-- `startProject` spawns with `detached: true` — process group created via setsid().
-- `stopProject` now sends group signals: `process.kill(-pid, 'SIGTERM')` with `process.kill(-pid, 'SIGKILL')` escalation after 5s.
-- When `child.pid` is undefined (spawn failure), falls back to `child.kill()` — safe degradation.
-- Stored PID fallback path also uses group signal (`kill(-pid, 'SIGTERM')`).
-- `stopListener` still uses positive-PID signals — intentional, it targets individual listeners not process groups.
+- `startProject` spawns with `detached: true`, `stdio: ['ignore', 'pipe', 'pipe']`. PGID = child PID via setsid().
+- `stopProject` sends group signals with PID verification: checks alive (`kill(pid, 0)`) and cwd match (via lsof) before signaling. Stale PIDs cleaned from config without signal.
+- `stopListener` retains positive-PID signals — targets individual listeners, not process groups.
+- Config store fully hardened (Epic 2): atomic writes, serialized queue, cached with structuredClone boundaries, backward-compat defaults.
+- `verifyPid(pid, expectedPath)` exported from process-manager.ts — reuses `parseCwdOutput` from listener-scanner.ts. Returns false for dead PIDs and cwd mismatches.
 
 ## Watch for
-- Task 3.3 adds PID verification (alive + cwd match) before signaling. The `process.kill(-pid, 0)` check verifies group existence.
-- Task 3.6 (double exit handler) is still pending — `stopProject` registers a second `child.on('exit')`.
-- The `child.pid` undefined guard was added for robustness but the undefined case is unlikely in practice (spawn fails before returning a ChildProcess).
+- Task 3.4 needs `getActiveProcesses()` to iterate all running process groups for shutdown cleanup.
+- Task 3.5 will reuse `verifyPid` for startup PID cleanup — iterate `config.pids`, verify each, remove stale.
+- Task 3.6 (double exit handler) — stopProject registers a second `child.on('exit')` alongside startProject's. Don't fix before 3.6.
+- The `incomplete-test-config-after-schema-change` pattern — grep for `as <Type>` casts in tests after extending shared types.
+- Every PR this session needed 2 Crucible rounds due to test coverage gaps on edge cases. Write defensive path tests upfront.
