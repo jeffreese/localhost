@@ -137,6 +137,17 @@ describe('process-manager', () => {
       resetConfig()
     })
 
+    it('spawns with detached: true and explicit stdio pipes', async () => {
+      await startProject('p1', '/tmp/p1', 'pnpm', 'dev')
+
+      expect(spawnMock).toHaveBeenCalledWith('pnpm', ['dev'], {
+        cwd: '/tmp/p1',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
+        env: expect.objectContaining({ FORCE_COLOR: '1' }),
+      })
+    })
+
     it('captures stdout lines into the project buffer', async () => {
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
       fakeChild.stdout.emit('data', Buffer.from('line one\nline two\n'))

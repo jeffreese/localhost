@@ -93,8 +93,8 @@ export async function startProject(
   const [cmd, args] = buildCommand(packageManager, devScript)
   const child = spawn(cmd, args, {
     cwd: projectPath,
-    stdio: 'pipe',
-    detached: false,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
     env: { ...process.env, FORCE_COLOR: '1' },
   })
 
