@@ -76,7 +76,7 @@ export async function readConfig(): Promise<LocalhostConfig> {
     raw = await readFile(CONFIG_PATH, 'utf-8')
   } catch {
     const config = defaultConfig()
-    await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2))
+    await writeConfig(config)
     return config
   }
 
@@ -88,7 +88,7 @@ export async function readConfig(): Promise<LocalhostConfig> {
     await rename(CONFIG_PATH, backupPath)
     console.warn(`Corrupt config backed up to ${backupPath}`)
     const config = defaultConfig()
-    await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2))
+    await writeConfig(config)
     return config
   }
 
@@ -98,7 +98,7 @@ export async function readConfig(): Promise<LocalhostConfig> {
 
   if (typeof parsed === 'object' && parsed !== null) {
     const config = repairConfig(parsed as Record<string, unknown>)
-    await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2))
+    await writeConfig(config)
     return config
   }
 
@@ -106,13 +106,15 @@ export async function readConfig(): Promise<LocalhostConfig> {
   await rename(CONFIG_PATH, backupPath)
   console.warn(`Invalid config backed up to ${backupPath}`)
   const config = defaultConfig()
-  await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2))
+  await writeConfig(config)
   return config
 }
 
 export async function writeConfig(config: LocalhostConfig): Promise<void> {
   await ensureDir()
-  await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2))
+  const tmpPath = `${CONFIG_PATH}.tmp`
+  await writeFile(tmpPath, JSON.stringify(config, null, 2))
+  await rename(tmpPath, CONFIG_PATH)
 }
 
 export async function updateConfig(
