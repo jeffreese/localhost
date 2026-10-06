@@ -127,7 +127,7 @@ describe('process-manager', () => {
     })
   })
 
-  describe('ring buffer', () => {
+  describe('startProject', () => {
     beforeEach(() => {
       __resetLogBuffers()
       __resetActiveProcesses()
@@ -146,6 +146,17 @@ describe('process-manager', () => {
         detached: true,
         env: expect.objectContaining({ FORCE_COLOR: '1' }),
       })
+    })
+  })
+
+  describe('ring buffer', () => {
+    beforeEach(() => {
+      __resetLogBuffers()
+      __resetActiveProcesses()
+      fakeChild = new FakeChild()
+      spawnMock.mockReset()
+      spawnMock.mockReturnValue(fakeChild)
+      resetConfig()
     })
 
     it('captures stdout lines into the project buffer', async () => {
