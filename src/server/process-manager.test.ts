@@ -62,6 +62,10 @@ const {
 function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
   storedConfig = {
     scanRoot: '/tmp/Code',
+    projectTypes: {
+      'package.json': { name: 'node', detectManager: true, processNames: ['node', 'bun', 'deno'] },
+      'Cargo.toml': { name: 'rust', defaultCommand: 'cargo run', processNames: ['cargo'] },
+    },
     projects: {},
     pids: {},
     overrides: {},
@@ -69,8 +73,10 @@ function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
     ignored: [],
     sort: { field: 'name', order: 'asc' },
     customOrder: [],
+    groupConfig: { groups: [], assignments: {} },
+    crashes: {},
     ...overrides,
-  } as LocalhostConfig
+  }
 }
 
 describe('process-manager', () => {

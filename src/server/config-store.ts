@@ -37,6 +37,8 @@ async function ensureDir() {
   await mkdir(CONFIG_DIR, { recursive: true })
 }
 
+// Validates core fields only — new optional fields (projectTypes, groupConfig, crashes)
+// may be absent on disk. Callers must run applyDefaults() to fill them.
 function isValidConfig(data: unknown): data is LocalhostConfig {
   if (typeof data !== 'object' || data === null) return false
   const obj = data as Record<string, unknown>
