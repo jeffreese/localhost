@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "generated": "2026-10-05",
+  "gates": [
+    {
+      "id": "error-surfacing",
+      "instruction": "Every function with a catch block or early-return guard — verify the caller can distinguish failure from a legitimate empty result. Prefer throwing or pushing to an error channel over silent defaults (returning [] or null on error).",
+      "triggers": ["next"],
+      "severity": "block"
+    },
+    {
+      "id": "fault-isolation-symmetry",
+      "instruction": "When writing a collection-processing function, check if sibling functions of the same shape exist. Use the same fault-isolation pattern — if one has per-item try/catch, the other should too.",
+      "triggers": ["next"],
+      "severity": "warn"
+    },
+    {
+      "id": "async-state-timing",
+      "instruction": "Guard flags and state updates must happen at the right time relative to async operations. Set guard flags after the operation succeeds (or clean up in finally). Don't update UI state (dirty flags, base content, progress indicators) before the async call confirms.",
+      "triggers": ["next"],
+      "severity": "block"
+    },
+    {
+      "id": "error-path-tests",
+      "instruction": "After writing tests, verify each new catch/error path has a test that triggers it. If the error handling code can be deleted without a test failing, add a test.",
+      "triggers": ["next"],
+      "severity": "block"
+    },
+    {
+      "id": "api-contract-completeness",
+      "instruction": "Functions called from API endpoints or CLI commands must either throw on failure or return a distinguishable error state. Don't resolve successfully with internal-only error accounting.",
+      "triggers": ["next"],
+      "severity": "block"
+    },
+    {
+      "id": "doc-count-verification",
+      "instruction": "When writing a number into a markdown file that claims to count something (methods, tests, properties, branches, fields, hooks, steps), grep the source and verify the count before the write completes.",
+      "triggers": ["next"],
+      "severity": "block"
+    },
+    {
+      "id": "a11y-interactive-elements",
+      "instruction": "Every interactive element (buttons, links, inputs, custom clickable elements) must have: appropriate ARIA attributes, visible focus indicators, keyboard event handlers for non-native interactive elements, and meaningful accessible names.",
+      "triggers": ["next"],
+      "severity": "block"
+    },
+    {
+      "id": "cleanup-behavior",
+      "instruction": "Components with subscriptions, event listeners, timers, or external connections must have cleanup logic (disconnectedCallback). Verify the cleanup actually releases the resource — not just that a cleanup function exists.",
+      "triggers": ["next"],
+      "severity": "block"
+    },
+    {
+      "id": "cleanup-behavior-tests",
+      "instruction": "Components with cleanup/destroy behavior must have tests verifying: (1) cleanup runs on unmount, (2) no lingering timers/listeners after unmount, (3) re-mount after unmount works correctly.",
+      "triggers": ["next"],
+      "severity": "warn"
+    },
+    {
+      "id": "keyboard-interaction-tests",
+      "instruction": "Interactive components must have tests for keyboard interaction: Enter/Space on buttons, Escape to close modals/dropdowns, arrow keys for lists/menus, Tab order for focus management.",
+      "triggers": ["next"],
+      "severity": "warn"
+    },
+    {
+      "id": "loading-error-empty-states",
+      "instruction": "Every data-fetching component must handle three states visually: loading (skeleton or spinner), error (user-actionable message), and empty (meaningful empty state, not blank space).",
+      "triggers": ["next"],
+      "severity": "warn"
+    }
+  ]
+}

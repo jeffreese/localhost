@@ -1,3 +1,11 @@
+---
+title: "CLAUDE.md"
+phase: 3
+project: localhost
+date: 2026-10-05
+status: draft
+---
+
 # Localhost
 
 Local dev server dashboard at `localhost:7770`. Scans `~/Code/` for projects, detects running dev servers via OS TCP listener enumeration, and provides a browser UI to start/stop/monitor them. Two-layer architecture: Hono backend (:7769) + Lit web components + Tailwind frontend (:7770). REST for commands, SSE for real-time state push.
@@ -128,11 +136,7 @@ ADRs live in `docs/adrs/`. Enforcement rules in `.claude/rules/`.
 
 ## Development Roadmap
 
-See `docs/plans/backlog.md` for the ordered task queue. Current: retrofit plan in `docs/plans/retrofit/`.
-
-## Planning Docs
-
-Full retrofit spec is in `docs/spec/retrofit/` (phase-1 through phase-3). Original MVP spec in `docs/spec/` (phase-1 through phase-3). Consult retrofit spec for current requirements, architecture, and data flows.
+See `docs/plans/backlog.md` for the ordered task queue.
 
 ## Git Workflow
 
@@ -146,5 +150,3 @@ This project uses the Forge development lifecycle plugin. Key workflow skills:
 - `/forge:ship` — Test → review → commit → push → PR
 - `/forge:review` — Self-review against ADRs and conventions
 - `/forge:retro` — End-of-session retrospective
-
-See `plugins/forge/README.md` for the full list.
