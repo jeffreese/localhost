@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -91,5 +91,34 @@ describe('config-store', () => {
 
     const reloaded = await readConfig()
     expect(reloaded.ignored).toEqual(['/ignore/me'])
+  })
+
+  it('writeConfig uses atomic temp+rename (no lingering .tmp file)', async () => {
+    const configDir = join(tmpdir(), '.localhost')
+    const configPath = join(configDir, 'config.json')
+    const tmpPath = `${configPath}.tmp`
+
+    const config = await readConfig()
+    config.hidden.push('/atomic/test')
+    await writeConfig(config)
+
+    expect(existsSync(tmpPath)).toBe(false)
+    const written = JSON.parse(readFileSync(configPath, 'utf-8'))
+    expect(written.hidden).toContain('/atomic/test')
+  })
+
+  it('readConfig recovery paths use atomic writes (no .tmp lingers)', async () => {
+    const configDir = join(tmpdir(), '.localhost')
+    const configPath = join(configDir, 'config.json')
+    const tmpPath = `${configPath}.tmp`
+
+    mkdirSync(configDir, { recursive: true })
+    writeFileSync(configPath, '{not valid json')
+
+    await readConfig()
+
+    expect(existsSync(tmpPath)).toBe(false)
+    const written = JSON.parse(readFileSync(configPath, 'utf-8'))
+    expect(written.projects).toEqual({})
   })
 })
