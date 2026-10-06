@@ -1,12 +1,14 @@
 # Session Context
 
 ## Active decisions
-- Config-store async migration complete. All three exports (`readConfig`, `writeConfig`, `updateConfig`) return Promises. All callers updated to await.
-- `existsSync` kept for the config-path check in `readConfig` — fast single check, no benefit from async.
+- Scanner async migration complete. All internal helpers (`detectPackageManager`, `detectDevScript`, `detectGithubUrl`, `walk`) are async. `existsSync` replaced with `access()`-based `fileExists()` helper.
+- `scan()` and `scanAndPersist()` were already async from task 1.1's caller updates — no route changes needed.
 
 ## Gotchas discovered
-- Async config-store cascades through every caller: scanner.ts, process-manager.ts, routes.ts all changed signatures. Test mocks must return async values.
-- `stopProject` uses `new Promise` wrapping with `.then()` chains for async config calls — task 1.4 is the right place to clean this up.
+- Crucible will flag fire-and-forget `updateConfig` calls in event handlers — use `.catch(() => {})` pattern, not `async` callbacks on EventEmitters. (Learned regression: `async-event-handler-rejection`)
+- `.then()` chains inside `new Promise()` constructors need `.catch()` to prevent hanging promises. (Learned regression: `hanging-promise-no-catch`)
+- The `stopProject` function still uses `new Promise` wrapping with `.then()` chains — task 1.4 should refactor this to proper async/await.
 
 ## Conventions established
-- Test mocks for config-store must use `async () =>` to match real return types.
+- Test mocks for async config-store use `async () =>` returns.
+- Scanner test mock for `readConfig` returns async config object.
