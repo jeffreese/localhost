@@ -5,3 +5,8 @@ dist/
 .env
 .env.local
 .DS_Store
+.forge/dev-state.json
+.forge/recall.db
+.forge/crucible/review-checkpoints/
+.forge/crucible/review-state/
+.mcp.json

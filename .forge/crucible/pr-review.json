@@ -1,0 +1,21 @@
+{
+  "gh_repo": "jeffreese/localhost",
+  "target_repo_path": "/Users/jeffreese/Code/localhost",
+  "test_command": "pnpm test",
+  "smoke_testing": {
+    "enabled": true,
+    "dev_command": "pnpm dev",
+    "dev_server_url": "http://localhost:7770"
+  },
+  "capabilities": {
+    "mobile": false,
+    "offline_first": false,
+    "web_ui": true
+  },
+  "domain_concerns": [
+    "sync-io-regression",
+    "process-signal-safety",
+    "config-race-conditions",
+    "console-hydration-race"
+  ]
+}
