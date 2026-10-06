@@ -13,11 +13,11 @@ vi.mock('node:os', async () => {
   }
 })
 
-const { readConfig, writeConfig, updateConfig } = await import('./config-store')
+const { readConfig, writeConfig, updateConfig, resetCache } = await import('./config-store')
 
 describe('config-store', () => {
   beforeEach(() => {
-    // Clean up any existing .localhost dir in tmpdir
+    resetCache()
     const configDir = join(tmpdir(), '.localhost')
     if (existsSync(configDir)) {
       rmSync(configDir, { recursive: true })
@@ -150,6 +150,55 @@ describe('config-store', () => {
       c.ignored.push('/after-failure')
     })
     expect(result.ignored).toContain('/after-failure')
+  })
+
+  it('readConfig returns cached value on second call (no disk read)', async () => {
+    const config = await readConfig()
+    config.hidden.push('/cached-test')
+    await writeConfig(config)
+
+    // Overwrite the file on disk with different content
+    const configDir = join(tmpdir(), '.localhost')
+    writeFileSync(
+      join(configDir, 'config.json'),
+      JSON.stringify({ ...config, hidden: ['/disk-only'] }, null, 2),
+    )
+
+    // readConfig should return the cached version, not the disk version
+    const cached = await readConfig()
+    expect(cached.hidden).toContain('/cached-test')
+    expect(cached.hidden).not.toContain('/disk-only')
+  })
+
+  it('writeConfig updates the cache', async () => {
+    const config = await readConfig()
+    config.ignored.push('/write-cache-test')
+    await writeConfig(config)
+
+    // Next read should reflect the write without hitting disk
+    const cached = await readConfig()
+    expect(cached.ignored).toContain('/write-cache-test')
+  })
+
+  it('resetCache forces next readConfig to hit disk', async () => {
+    const config = await readConfig()
+    config.hidden.push('/before-reset')
+    await writeConfig(config)
+
+    // Write different content to disk behind the cache
+    const configDir = join(tmpdir(), '.localhost')
+    const diskConfig = { ...config, hidden: ['/after-reset'] }
+    writeFileSync(join(configDir, 'config.json'), JSON.stringify(diskConfig, null, 2))
+
+    // Cache still returns old value
+    const cached = await readConfig()
+    expect(cached.hidden).toContain('/before-reset')
+
+    // After reset, reads from disk
+    resetCache()
+    const fresh = await readConfig()
+    expect(fresh.hidden).toContain('/after-reset')
+    expect(fresh.hidden).not.toContain('/before-reset')
   })
 
   it('readConfig recovery paths use atomic writes (no .tmp lingers)', async () => {
