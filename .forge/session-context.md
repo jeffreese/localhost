@@ -1,16 +1,17 @@
 # Session Context
 
 ## What's next
-- Task 3.2: Modify `stopProject` to use `process.kill(-pid, 'SIGTERM')` (process group signal). SIGKILL escalation targets the group.
-- Tasks 3.3-3.7 continue the Process Group Lifecycle epic.
+- Task 3.3: PID verification before signaling — check PID alive and cwd matches project path.
+- Tasks 3.4-3.7 continue the Process Group Lifecycle epic.
 
 ## Key constraints (carried forward)
-- `startProject` now spawns with `detached: true` and `stdio: ['ignore', 'pipe', 'pipe']`. Verified that macOS setsid() creates a process group with PGID = child PID.
-- Process group signal `kill(-pid)` works on macOS — validated with a prototype.
-- `stopProject` still uses positive-PID signals and `child.kill()` — task 3.2 will change this to group signals.
-- Task 3.6 (double exit handler fix) is a separate task — don't fix the double exit handler registration in stopProject yet.
+- `startProject` spawns with `detached: true` — process group created via setsid().
+- `stopProject` now sends group signals: `process.kill(-pid, 'SIGTERM')` with `process.kill(-pid, 'SIGKILL')` escalation after 5s.
+- When `child.pid` is undefined (spawn failure), falls back to `child.kill()` — safe degradation.
+- Stored PID fallback path also uses group signal (`kill(-pid, 'SIGTERM')`).
+- `stopListener` still uses positive-PID signals — intentional, it targets individual listeners not process groups.
 
 ## Watch for
-- `stopProject` registers a second `child.on('exit')` listener alongside the one from `startProject`. Task 3.6 addresses this.
-- `stopProject`'s fallback path (no active child, kill via stored PID) still sends positive-PID signals — task 3.2 will address this.
-- The `child.kill('SIGTERM')` call in `stopProject` sends SIGTERM to the child process only, not the group. With detached=true, this may leave grandchildren running. Task 3.2 fixes this.
+- Task 3.3 adds PID verification (alive + cwd match) before signaling. The `process.kill(-pid, 0)` check verifies group existence.
+- Task 3.6 (double exit handler) is still pending — `stopProject` registers a second `child.on('exit')`.
+- The `child.pid` undefined guard was added for robustness but the undefined case is unlikely in practice (spawn fails before returning a ChildProcess).

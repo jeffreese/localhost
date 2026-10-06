@@ -186,14 +186,14 @@ export async function stopProject(projectId: string): Promise<void> {
   const child = activeProcesses.get(projectId)
 
   if (!child) {
-    // Not spawned by us — kill via stored PID
+    // Not spawned by us — kill via stored PID (group signal since we spawn detached)
     const config = await readConfig()
     const pid = config.pids[projectId]
     if (pid) {
       try {
-        process.kill(pid, 'SIGTERM')
+        process.kill(-pid, 'SIGTERM')
       } catch {
-        // Process already dead
+        // Process group already dead
       }
       await updateConfig((c) => {
         delete c.pids[projectId]
@@ -202,9 +202,18 @@ export async function stopProject(projectId: string): Promise<void> {
     return
   }
 
+  const pid = child.pid
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {
-      child.kill('SIGKILL')
+      if (pid !== undefined) {
+        try {
+          process.kill(-pid, 'SIGKILL')
+        } catch {
+          // Process group already dead
+        }
+      } else {
+        child.kill('SIGKILL')
+      }
     }, 5000)
 
     child.on('exit', () => {
@@ -216,7 +225,15 @@ export async function stopProject(projectId: string): Promise<void> {
       resolve()
     })
 
-    child.kill('SIGTERM')
+    if (pid !== undefined) {
+      try {
+        process.kill(-pid, 'SIGTERM')
+      } catch {
+        // Process group already dead
+      }
+    } else {
+      child.kill('SIGTERM')
+    }
   })
 }
 

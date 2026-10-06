@@ -25,7 +25,7 @@ date: 2026-10-05
 ## Epic 3: Process Group Lifecycle
 
 - [x] 3.1 Modify `startProject` to spawn with `detached: true`. Explicitly pipe stdout/stderr. Verify process group creation on macOS.
-- [ ] 3.2 Modify `stopProject` to use `process.kill(-pid, 'SIGTERM')` (process group signal). SIGKILL escalation targets the group.
+- [x] 3.2 Modify `stopProject` to use `process.kill(-pid, 'SIGTERM')` (process group signal). SIGKILL escalation targets the group.
 - [ ] 3.3 Implement PID verification: before signaling, check PID alive and cwd matches project path. Refuse on mismatch.
 - [ ] 3.4 Add shutdown handlers in index.ts: SIGTERM/SIGINT/exit → kill all active process groups with grace period.
 - [ ] 3.5 Implement startup PID cleanup: iterate `config.pids`, verify each, remove dead/stale.
