@@ -17,7 +17,7 @@ date: 2026-10-05
 ## Epic 2: Config Store Hardening
 
 - [x] 2.1 Implement atomic writes: write to `.tmp` file, then `fs.rename` to config path.
-- [ ] 2.2 Implement write serialization: async queue wrapping `updateConfig` for concurrent safety.
+- [x] 2.2 Implement write serialization: async queue wrapping `updateConfig` for concurrent safety.
 - [ ] 2.3 Implement read caching: in-memory cache populated on first read, updated on write.
 - [ ] 2.4 Add backward-compatible defaults for new config fields (`projectTypes`, `groupConfig`, `crashes`) in `readConfig`.
 - [ ] 2.5 Write tests: concurrent updates, crash-during-write recovery, cache invalidation.
