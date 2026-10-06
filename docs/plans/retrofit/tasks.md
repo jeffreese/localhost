@@ -20,7 +20,7 @@ date: 2026-10-05
 - [x] 2.2 Implement write serialization: async queue wrapping `updateConfig` for concurrent safety.
 - [x] 2.3 Implement read caching: in-memory cache populated on first read, updated on write.
 - [x] 2.4 Add backward-compatible defaults for new config fields (`projectTypes`, `groupConfig`, `crashes`) in `readConfig`.
-- [ ] 2.5 Write tests: concurrent updates, crash-during-write recovery, cache invalidation.
+- [x] 2.5 Write tests: concurrent updates, crash-during-write recovery, cache invalidation.
 
 ## Epic 3: Process Group Lifecycle
 
