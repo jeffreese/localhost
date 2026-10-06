@@ -1,7 +1,7 @@
-import { type ChildProcess, spawn } from 'node:child_process'
+import { type ChildProcess, execFile, spawn } from 'node:child_process'
 import type { Listener, LogLine, PackageManager } from '@shared/types'
 import { readConfig, updateConfig } from './config-store'
-import { enumerateListeners, matchListenersToProjects } from './listener-scanner'
+import { enumerateListeners, matchListenersToProjects, parseCwdOutput } from './listener-scanner'
 
 const activeProcesses = new Map<string, ChildProcess>()
 
@@ -182,23 +182,55 @@ export async function startProject(
   return child
 }
 
+function execAsync(command: string, args: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    execFile(command, args, { encoding: 'utf-8', timeout: 5000 }, (_err, stdout) => {
+      resolve(stdout ?? '')
+    })
+  })
+}
+
+/**
+ * Verify a PID is alive and its cwd matches the expected project path.
+ * Returns true if safe to signal, false if stale.
+ */
+export async function verifyPid(pid: number, expectedPath: string): Promise<boolean> {
+  try {
+    process.kill(pid, 0)
+  } catch {
+    return false
+  }
+
+  const output = await execAsync('lsof', ['-p', String(pid), '-d', 'cwd', '-F', 'pn'])
+  const cwdByPid = parseCwdOutput(output)
+  const cwd = cwdByPid.get(pid)
+  if (!cwd) return false
+
+  return cwd === expectedPath || cwd.startsWith(`${expectedPath}/`)
+}
+
 export async function stopProject(projectId: string): Promise<void> {
   const child = activeProcesses.get(projectId)
 
   if (!child) {
-    // Not spawned by us — kill via stored PID (group signal since we spawn detached)
     const config = await readConfig()
     const pid = config.pids[projectId]
-    if (pid) {
-      try {
-        process.kill(-pid, 'SIGTERM')
-      } catch {
-        // Process group already dead
-      }
+    if (!pid) return
+    const projectPath = config.projects[projectId]?.path
+    if (!projectPath || !(await verifyPid(pid, projectPath))) {
       await updateConfig((c) => {
         delete c.pids[projectId]
       })
+      return
     }
+    try {
+      process.kill(-pid, 'SIGTERM')
+    } catch {
+      // Process group already dead
+    }
+    await updateConfig((c) => {
+      delete c.pids[projectId]
+    })
     return
   }
 

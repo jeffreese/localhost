@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import type { LocalhostConfig, LogLine } from '@shared/types'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let storedConfig: LocalhostConfig = {
   scanRoot: '/tmp/Code',
@@ -28,10 +28,14 @@ vi.mock('./config-store', () => ({
   }),
 }))
 
-vi.mock('./listener-scanner', () => ({
-  enumerateListeners: async () => ({ listeners: [], cwdByPid: new Map() }),
-  matchListenersToProjects: () => ({}),
-}))
+vi.mock('./listener-scanner', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./listener-scanner')>()
+  return {
+    enumerateListeners: async () => ({ listeners: [], cwdByPid: new Map() }),
+    matchListenersToProjects: () => ({}),
+    parseCwdOutput: original.parseCwdOutput,
+  }
+})
 
 /** Minimal ChildProcess stand-in driven by tests. */
 class FakeChild extends EventEmitter {
@@ -43,9 +47,11 @@ class FakeChild extends EventEmitter {
 
 let fakeChild: FakeChild
 const spawnMock = vi.fn()
+const execFileMock = vi.fn()
 
 vi.mock('node:child_process', () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
+  execFile: (...args: unknown[]) => execFileMock(...args),
 }))
 
 const {
@@ -53,6 +59,7 @@ const {
   assembleLines,
   startProject,
   stopProject,
+  verifyPid,
   getLogs,
   hasLogs,
   __resetLogBuffers,
@@ -77,6 +84,32 @@ function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
     crashes: {},
     ...overrides,
   }
+}
+
+function mockLsofCwd(pid: number, cwd: string) {
+  execFileMock.mockImplementation(
+    (
+      _cmd: string,
+      _args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string) => void,
+    ) => {
+      cb(null, `p${pid}\nn${cwd}\n`)
+    },
+  )
+}
+
+function mockLsofEmpty() {
+  execFileMock.mockImplementation(
+    (
+      _cmd: string,
+      _args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string) => void,
+    ) => {
+      cb(null, '')
+    },
+  )
 }
 
 describe('process-manager', () => {
@@ -124,6 +157,61 @@ describe('process-manager', () => {
     it('tags each line with the correct stream and timestamp', () => {
       const { lines } = assembleLines('', 'err!\n', 'stderr', 2000)
       expect(lines).toEqual<LogLine[]>([{ stream: 'stderr', ts: 2000, text: 'err!' }])
+    })
+  })
+
+  describe('verifyPid', () => {
+    afterEach(() => {
+      execFileMock.mockReset()
+    })
+
+    it('returns true when PID is alive and cwd matches', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      mockLsofCwd(9999, '/tmp/my-project')
+
+      const result = await verifyPid(9999, '/tmp/my-project')
+      expect(result).toBe(true)
+      expect(killSpy).toHaveBeenCalledWith(9999, 0)
+      killSpy.mockRestore()
+    })
+
+    it('returns true when cwd is a subdirectory of expected path', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      mockLsofCwd(9999, '/tmp/my-project/packages/app')
+
+      const result = await verifyPid(9999, '/tmp/my-project')
+      expect(result).toBe(true)
+      killSpy.mockRestore()
+    })
+
+    it('returns false when PID is dead (ESRCH)', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
+        const err = new Error('ESRCH') as NodeJS.ErrnoException
+        err.code = 'ESRCH'
+        throw err
+      })
+
+      const result = await verifyPid(9999, '/tmp/my-project')
+      expect(result).toBe(false)
+      killSpy.mockRestore()
+    })
+
+    it('returns false when cwd does not match', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      mockLsofCwd(9999, '/tmp/other-project')
+
+      const result = await verifyPid(9999, '/tmp/my-project')
+      expect(result).toBe(false)
+      killSpy.mockRestore()
+    })
+
+    it('returns false when lsof returns no output', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      mockLsofEmpty()
+
+      const result = await verifyPid(9999, '/tmp/my-project')
+      expect(result).toBe(false)
+      killSpy.mockRestore()
     })
   })
 
@@ -243,13 +331,93 @@ describe('process-manager', () => {
       await stopProject('p1')
     })
 
-    it('sends group SIGTERM to stored PID and cleans config when no active child', async () => {
+    it('sends group SIGTERM to stored PID when verification passes', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      resetConfig({
+        pids: { p1: 9999 },
+        projects: {
+          p1: {
+            name: 'p1',
+            path: '/tmp/p1',
+            packageManager: 'npm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+        },
+      })
+      mockLsofCwd(9999, '/tmp/p1')
+
+      await stopProject('p1')
+
+      expect(killSpy).toHaveBeenCalledWith(9999, 0)
+      expect(killSpy).toHaveBeenCalledWith(-9999, 'SIGTERM')
+      expect(storedConfig.pids.p1).toBeUndefined()
+      killSpy.mockRestore()
+    })
+
+    it('skips signal and cleans config when stored PID is dead', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+        _pid: number,
+        signal?: string | number,
+      ) => {
+        if (signal === 0) {
+          const err = new Error('ESRCH') as NodeJS.ErrnoException
+          err.code = 'ESRCH'
+          throw err
+        }
+        return true
+      }) as typeof process.kill)
+      resetConfig({
+        pids: { p1: 9999 },
+        projects: {
+          p1: {
+            name: 'p1',
+            path: '/tmp/p1',
+            packageManager: 'npm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+        },
+      })
+
+      await stopProject('p1')
+
+      expect(killSpy).toHaveBeenCalledWith(9999, 0)
+      expect(killSpy).not.toHaveBeenCalledWith(-9999, 'SIGTERM')
+      expect(storedConfig.pids.p1).toBeUndefined()
+      killSpy.mockRestore()
+    })
+
+    it('skips signal and cleans config when stored PID cwd mismatches', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      resetConfig({
+        pids: { p1: 9999 },
+        projects: {
+          p1: {
+            name: 'p1',
+            path: '/tmp/p1',
+            packageManager: 'npm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+        },
+      })
+      mockLsofCwd(9999, '/tmp/other-project')
+
+      await stopProject('p1')
+
+      expect(killSpy).not.toHaveBeenCalledWith(-9999, 'SIGTERM')
+      expect(storedConfig.pids.p1).toBeUndefined()
+      killSpy.mockRestore()
+    })
+
+    it('skips signal and cleans config when project path is missing from config', async () => {
       const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
       resetConfig({ pids: { p1: 9999 } })
 
       await stopProject('p1')
 
-      expect(killSpy).toHaveBeenCalledWith(-9999, 'SIGTERM')
+      expect(killSpy).not.toHaveBeenCalledWith(-9999, 'SIGTERM')
       expect(storedConfig.pids.p1).toBeUndefined()
       killSpy.mockRestore()
     })
