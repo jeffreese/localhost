@@ -75,14 +75,14 @@ function buildCommand(packageManager: PackageManager, script: string): [string, 
   }
 }
 
-export function startProject(
+export async function startProject(
   projectId: string,
   projectPath: string,
   packageManager: PackageManager,
   devScript: string,
   onPortDetected?: (projectId: string, port: number) => void,
   onLogs?: (projectId: string, lines: LogLine[]) => void,
-): ChildProcess {
+): Promise<ChildProcess> {
   if (activeProcesses.has(projectId)) {
     throw new Error(`Project ${projectId} is already running`)
   }
@@ -102,7 +102,7 @@ export function startProject(
 
   if (child.pid !== undefined) {
     const pid = child.pid
-    updateConfig((config) => {
+    await updateConfig((config) => {
       config.pids[projectId] = pid
     })
   }
@@ -176,7 +176,7 @@ export function startProject(
     activeProcesses.delete(projectId)
     updateConfig((config) => {
       delete config.pids[projectId]
-    })
+    }).catch(() => {})
   })
 
   return child
@@ -188,19 +188,22 @@ export function stopProject(projectId: string): Promise<void> {
 
     if (!child) {
       // Not spawned by us — kill via stored PID
-      const config = readConfig()
-      const pid = config.pids[projectId]
-      if (pid) {
-        try {
-          process.kill(pid, 'SIGTERM')
-        } catch {
-          // Process already dead
-        }
-        updateConfig((c) => {
-          delete c.pids[projectId]
+      readConfig()
+        .then(async (config) => {
+          const pid = config.pids[projectId]
+          if (pid) {
+            try {
+              process.kill(pid, 'SIGTERM')
+            } catch {
+              // Process already dead
+            }
+            await updateConfig((c) => {
+              delete c.pids[projectId]
+            })
+          }
         })
-      }
-      resolve()
+        .then(() => resolve())
+        .catch(() => resolve())
       return
     }
 
@@ -214,7 +217,8 @@ export function stopProject(projectId: string): Promise<void> {
       updateConfig((c) => {
         delete c.pids[projectId]
       })
-      resolve()
+        .then(() => resolve())
+        .catch(() => resolve())
     })
 
     child.kill('SIGTERM')
@@ -251,8 +255,8 @@ function getPortOwner(port: number): number | null {
  * Detect all running projects by enumerating OS TCP listeners
  * and matching their working directories to known project paths.
  */
-export function detectAllListeners(): Record<string, Listener[]> {
-  const config = readConfig()
+export async function detectAllListeners(): Promise<Record<string, Listener[]>> {
+  const config = await readConfig()
   const projectPaths: Record<string, string> = {}
   for (const [id, cached] of Object.entries(config.projects)) {
     projectPaths[id] = cached.path

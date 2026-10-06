@@ -13,25 +13,25 @@ let mockConfig: LocalhostConfig = {
 }
 
 vi.mock('./config-store', () => ({
-  readConfig: () => mockConfig,
-  writeConfig: vi.fn(),
-  updateConfig: vi.fn((fn: (c: LocalhostConfig) => void) => {
+  readConfig: async () => mockConfig,
+  writeConfig: vi.fn(async () => {}),
+  updateConfig: vi.fn(async (fn: (c: LocalhostConfig) => void) => {
     fn(mockConfig)
     return mockConfig
   }),
 }))
 
 vi.mock('./process-manager', () => ({
-  detectAllListeners: () => ({}),
-  startProject: vi.fn(),
-  stopProject: vi.fn(() => Promise.resolve()),
+  detectAllListeners: async () => ({}),
+  startProject: vi.fn(async () => ({})),
+  stopProject: vi.fn(async () => {}),
   stopListener: vi.fn(),
   getLogs: vi.fn(() => []),
   hasLogs: vi.fn(() => false),
 }))
 
 vi.mock('./scanner', () => ({
-  scanAndPersist: () => new Map(),
+  scanAndPersist: async () => new Map(),
 }))
 
 vi.mock('./sse', () => ({

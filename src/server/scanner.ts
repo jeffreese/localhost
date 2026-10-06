@@ -105,14 +105,14 @@ function walk(dir: string, ignoredPaths: string[], depth: number): Map<string, P
   return results
 }
 
-export function scan(): Map<string, ProjectCache> {
-  const config = readConfig()
+export async function scan(): Promise<Map<string, ProjectCache>> {
+  const config = await readConfig()
   return walk(config.scanRoot, config.ignored, 0)
 }
 
-export function scanAndPersist(): Map<string, ProjectCache> {
-  const projects = scan()
-  updateConfig((config) => {
+export async function scanAndPersist(): Promise<Map<string, ProjectCache>> {
+  const projects = await scan()
+  await updateConfig((config) => {
     config.projects = Object.fromEntries(projects)
     // Clean up stale entries from previously scanned skip directories
     for (const id of Object.keys(config.projects)) {
