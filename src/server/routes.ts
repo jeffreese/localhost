@@ -114,9 +114,7 @@ api.post('/projects/:id/stop', async (c) => {
   // Kill all detected listeners for this project
   const listenerMap = await detectAllListeners()
   const listeners = listenerMap[projectId] ?? []
-  for (const listener of listeners) {
-    stopListener(listener.pid)
-  }
+  await Promise.all(listeners.map((listener) => stopListener(listener.pid)))
 
   // Also stop any process we spawned
   await stopProject(projectId)
@@ -125,12 +123,12 @@ api.post('/projects/:id/stop', async (c) => {
 })
 
 // POST /api/projects/:id/stop/:pid — stop a specific listener
-api.post('/projects/:id/stop/:pid', (c) => {
+api.post('/projects/:id/stop/:pid', async (c) => {
   const pid = Number.parseInt(c.req.param('pid'), 10)
   if (Number.isNaN(pid)) {
     return c.json({ error: 'Invalid PID' }, 400)
   }
-  stopListener(pid)
+  await stopListener(pid)
   const projectId = decodeURIComponent(c.req.param('id'))
   broadcast({ type: 'process-stopped', data: { projectId } })
   return c.json({ status: 'stopped', pid })

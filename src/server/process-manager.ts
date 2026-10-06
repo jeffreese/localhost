@@ -1,4 +1,4 @@
-import { type ChildProcess, execSync, spawn } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import type { Listener, LogLine, PackageManager } from '@shared/types'
 import { readConfig, updateConfig } from './config-store'
 import { enumerateListeners, matchListenersToProjects } from './listener-scanner'
@@ -182,31 +182,27 @@ export async function startProject(
   return child
 }
 
-export function stopProject(projectId: string): Promise<void> {
-  return new Promise((resolve) => {
-    const child = activeProcesses.get(projectId)
+export async function stopProject(projectId: string): Promise<void> {
+  const child = activeProcesses.get(projectId)
 
-    if (!child) {
-      // Not spawned by us — kill via stored PID
-      readConfig()
-        .then(async (config) => {
-          const pid = config.pids[projectId]
-          if (pid) {
-            try {
-              process.kill(pid, 'SIGTERM')
-            } catch {
-              // Process already dead
-            }
-            await updateConfig((c) => {
-              delete c.pids[projectId]
-            })
-          }
-        })
-        .then(() => resolve())
-        .catch(() => resolve())
-      return
+  if (!child) {
+    // Not spawned by us — kill via stored PID
+    const config = await readConfig()
+    const pid = config.pids[projectId]
+    if (pid) {
+      try {
+        process.kill(pid, 'SIGTERM')
+      } catch {
+        // Process already dead
+      }
+      await updateConfig((c) => {
+        delete c.pids[projectId]
+      })
     }
+    return
+  }
 
+  return new Promise((resolve) => {
     const timeout = setTimeout(() => {
       child.kill('SIGKILL')
     }, 5000)
@@ -216,9 +212,8 @@ export function stopProject(projectId: string): Promise<void> {
       activeProcesses.delete(projectId)
       updateConfig((c) => {
         delete c.pids[projectId]
-      })
-        .then(() => resolve())
-        .catch(() => resolve())
+      }).catch(() => {})
+      resolve()
     })
 
     child.kill('SIGTERM')
@@ -229,25 +224,11 @@ export function stopProject(projectId: string): Promise<void> {
  * Stop a specific listener by PID.
  * Used for granular control over individual processes within a project.
  */
-export function stopListener(pid: number): void {
+export async function stopListener(pid: number): Promise<void> {
   try {
     process.kill(pid, 'SIGTERM')
   } catch {
     // Process already dead
-  }
-}
-
-function getPortOwner(port: number): number | null {
-  try {
-    const output = execSync(`lsof -i :${port} -t`, { encoding: 'utf-8', timeout: 3000 })
-    const pids = output
-      .trim()
-      .split('\n')
-      .map((p) => Number.parseInt(p, 10))
-      .filter((p) => !Number.isNaN(p))
-    return pids[0] ?? null
-  } catch {
-    return null
   }
 }
 

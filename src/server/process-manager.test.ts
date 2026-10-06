@@ -40,13 +40,13 @@ const spawnMock = vi.fn()
 
 vi.mock('node:child_process', () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
-  execSync: vi.fn(() => ''),
 }))
 
 const {
   detectAllListeners,
   assembleLines,
   startProject,
+  stopProject,
   getLogs,
   hasLogs,
   __resetLogBuffers,
@@ -191,6 +191,43 @@ describe('process-manager', () => {
       const [pid, lines] = onLogs.mock.calls[0]
       expect(pid).toBe('p1')
       expect((lines as LogLine[]).map((l) => l.text)).toEqual(['one', 'two', 'three'])
+    })
+  })
+
+  describe('stopProject', () => {
+    beforeEach(() => {
+      __resetLogBuffers()
+      __resetActiveProcesses()
+      fakeChild = new FakeChild()
+      spawnMock.mockReset()
+      spawnMock.mockReturnValue(fakeChild)
+      resetConfig()
+    })
+
+    it('returns cleanly when no active child and no stored PID', async () => {
+      resetConfig({ pids: {} })
+      await stopProject('p1')
+    })
+
+    it('kills stored PID and cleans config when no active child', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      resetConfig({ pids: { p1: 9999 } })
+
+      await stopProject('p1')
+
+      expect(killSpy).toHaveBeenCalledWith(9999, 'SIGTERM')
+      expect(storedConfig.pids.p1).toBeUndefined()
+      killSpy.mockRestore()
+    })
+
+    it('sends SIGTERM to active child and resolves on exit', async () => {
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+
+      const stopPromise = stopProject('p1')
+      expect(fakeChild.kill).toHaveBeenCalledWith('SIGTERM')
+
+      fakeChild.emit('exit', 0, null)
+      await stopPromise
     })
   })
 })
