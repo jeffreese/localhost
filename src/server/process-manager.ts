@@ -198,6 +198,7 @@ export async function verifyPid(pid: number, expectedPath: string): Promise<bool
   try {
     process.kill(pid, 0)
   } catch {
+    // ESRCH = dead, EPERM = not ours — either way, unsafe to signal
     return false
   }
 

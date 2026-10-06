@@ -20,7 +20,7 @@ let storedConfig: LocalhostConfig = {
 }
 
 vi.mock('./config-store', () => ({
-  readConfig: async () => storedConfig,
+  readConfig: async () => structuredClone(storedConfig),
   writeConfig: vi.fn(async () => {}),
   updateConfig: vi.fn(async (fn: (c: LocalhostConfig) => void) => {
     fn(storedConfig)
@@ -188,6 +188,18 @@ describe('process-manager', () => {
       const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
         const err = new Error('ESRCH') as NodeJS.ErrnoException
         err.code = 'ESRCH'
+        throw err
+      })
+
+      const result = await verifyPid(9999, '/tmp/my-project')
+      expect(result).toBe(false)
+      killSpy.mockRestore()
+    })
+
+    it('returns false when PID is owned by another user (EPERM)', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
+        const err = new Error('EPERM') as NodeJS.ErrnoException
+        err.code = 'EPERM'
         throw err
       })
 
