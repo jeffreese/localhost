@@ -53,9 +53,35 @@ export interface ProjectOverride {
   devScript?: string
 }
 
+/** A registered project type for detection and process matching */
+export interface ProjectTypeEntry {
+  name: string
+  defaultCommand?: string
+  detectManager?: boolean
+  processNames?: string[]
+}
+
+/** Project group configuration */
+export interface GroupConfig {
+  groups: Array<{
+    id: string
+    name: string
+    collapsed: boolean
+  }>
+  assignments: Record<string, string>
+}
+
+/** Crash info stored when a process exits unexpectedly */
+export interface CrashInfo {
+  timestamp: string
+  exitCode: number | null
+  signal: string | null
+}
+
 /** Top-level config file schema */
 export interface LocalhostConfig {
   scanRoot: string
+  projectTypes: Record<string, ProjectTypeEntry>
   projects: Record<string, ProjectCache>
   pids: Record<string, number>
   overrides: Record<string, ProjectOverride>
@@ -63,6 +89,8 @@ export interface LocalhostConfig {
   ignored: string[]
   sort: SortPreference
   customOrder: string[]
+  groupConfig: GroupConfig
+  crashes: Record<string, CrashInfo>
 }
 
 /** Cached project data from last scan */

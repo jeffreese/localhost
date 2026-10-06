@@ -52,6 +52,12 @@ describe('config-store', () => {
     expect(config.hidden).toEqual([])
     expect(config.ignored).toEqual([])
     expect(config.customOrder).toEqual([])
+    expect(config.projectTypes).toEqual({
+      'package.json': { name: 'node', detectManager: true, processNames: ['node', 'bun', 'deno'] },
+      'Cargo.toml': { name: 'rust', defaultCommand: 'cargo run', processNames: ['cargo'] },
+    })
+    expect(config.groupConfig).toEqual({ groups: [], assignments: {} })
+    expect(config.crashes).toEqual({})
   })
 
   it('reads existing config', async () => {
@@ -278,5 +284,85 @@ describe('config-store', () => {
     expect(existsSync(tmpPath)).toBe(false)
     const written = JSON.parse(readFileSync(configPath, 'utf-8'))
     expect(written.projects).toEqual({})
+  })
+
+  it('old config without new fields gets defaults applied (backward compat)', async () => {
+    const configDir = join(tmpdir(), '.localhost')
+    mkdirSync(configDir, { recursive: true })
+    const oldConfig = {
+      scanRoot: '/Users/test/Code',
+      projects: {},
+      pids: {},
+      overrides: {},
+      hidden: ['/some/hidden'],
+      ignored: [],
+      sort: { field: 'name', order: 'asc' },
+      customOrder: [],
+    }
+    writeFileSync(join(configDir, 'config.json'), JSON.stringify(oldConfig))
+
+    const config = await readConfig()
+    expect(config.scanRoot).toBe('/Users/test/Code')
+    expect(config.hidden).toEqual(['/some/hidden'])
+    expect(config.projectTypes['package.json']).toEqual({
+      name: 'node',
+      detectManager: true,
+      processNames: ['node', 'bun', 'deno'],
+    })
+    expect(config.projectTypes['Cargo.toml']).toEqual({
+      name: 'rust',
+      defaultCommand: 'cargo run',
+      processNames: ['cargo'],
+    })
+    expect(config.groupConfig).toEqual({ groups: [], assignments: {} })
+    expect(config.crashes).toEqual({})
+  })
+
+  it('config with existing new fields preserves them (no overwrite)', async () => {
+    const configDir = join(tmpdir(), '.localhost')
+    mkdirSync(configDir, { recursive: true })
+    const existingConfig = {
+      scanRoot: '/Users/test/Code',
+      projectTypes: {
+        'pyproject.toml': { name: 'python', processNames: ['python3'] },
+      },
+      projects: {},
+      pids: {},
+      overrides: {},
+      hidden: [],
+      ignored: [],
+      sort: { field: 'name', order: 'asc' },
+      customOrder: [],
+      groupConfig: {
+        groups: [{ id: 'g1', name: 'Frontend', collapsed: false }],
+        assignments: { '/proj/a': 'g1' },
+      },
+      crashes: {
+        '/proj/a': { timestamp: '2026-01-01T00:00:00Z', exitCode: 1, signal: null },
+      },
+    }
+    writeFileSync(join(configDir, 'config.json'), JSON.stringify(existingConfig))
+
+    const config = await readConfig()
+    expect(config.projectTypes['pyproject.toml']).toEqual({
+      name: 'python',
+      processNames: ['python3'],
+    })
+    expect(config.projectTypes['package.json']).toBeUndefined()
+    expect(config.groupConfig.groups).toHaveLength(1)
+    expect(config.groupConfig.groups[0].name).toBe('Frontend')
+    expect(config.crashes['/proj/a'].exitCode).toBe(1)
+  })
+
+  it('repairConfig populates all new fields from partial config', async () => {
+    const configDir = join(tmpdir(), '.localhost')
+    mkdirSync(configDir, { recursive: true })
+    writeFileSync(join(configDir, 'config.json'), JSON.stringify({ scanRoot: '/custom' }))
+
+    const config = await readConfig()
+    expect(config.scanRoot).toBe('/custom')
+    expect(config.projectTypes['package.json'].name).toBe('node')
+    expect(config.groupConfig).toEqual({ groups: [], assignments: {} })
+    expect(config.crashes).toEqual({})
   })
 })
