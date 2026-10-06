@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -71,12 +70,6 @@ function repairConfig(data: Record<string, unknown>): LocalhostConfig {
 
 export async function readConfig(): Promise<LocalhostConfig> {
   await ensureDir()
-
-  if (!existsSync(CONFIG_PATH)) {
-    const config = defaultConfig()
-    await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2))
-    return config
-  }
 
   let raw: string
   try {

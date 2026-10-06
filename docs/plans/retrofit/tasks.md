@@ -12,7 +12,7 @@ date: 2026-10-05
 - [x] 1.2 Convert scanner.ts to async: `readdirSync`/`statSync`/`readFileSync` → `fs.promises`. `scan()` and `scanAndPersist()` become async. Update route handler.
 - [x] 1.3 Convert listener-scanner.ts to async: `execSync` → `execFile` wrapped in promise. Update route handlers.
 - [x] 1.4 Convert process-manager.ts to async: `startProject`/`stopProject`/`stopListener` become async. Config reads/writes go async.
-- [ ] 1.5 Verify zero `*Sync` calls in src/server/ production code. Update all tests for async.
+- [x] 1.5 Verify zero `*Sync` calls in src/server/ production code. Update all tests for async.
 
 ## Epic 2: Config Store Hardening
 

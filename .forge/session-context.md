@@ -1,14 +1,15 @@
 # Session Context
 
 ## Active decisions
-- `stopProject` refactored: no-child path uses clean async/await, child path keeps `new Promise` wrapper (event-based exit handling requires it). Config cleanup in child exit handler is fire-and-forget with `.catch(() => {})`.
-- `getPortOwner` removed (was dead code using `execSync`). Also completed task 4.1.
-- `stopListener` made async for API consistency, though `process.kill` is inherently synchronous.
+- Epic 1 (Async I/O Migration) complete. Zero `*Sync` calls in `src/server/` production code.
+- Last sync holdout (`existsSync` in config-store.ts) removed — the `readFile` catch block already handles ENOENT, making the existence check redundant.
 
 ## Gotchas discovered
-- Task 1.5 (verify zero *Sync calls) should now be straightforward — config-store, scanner, listener-scanner, and process-manager are all async.
-- The `existsSync` in config-store.ts is the only remaining sync call in production server code (intentional — see task 1.1 decision).
+- Stashed changes can leak into commits when popping across branches. Always check `git diff --cached --stat` before committing.
+- Crucible consistently catches: un-awaited async calls at call sites, missing `.catch()` on fire-and-forget promises, redundant file reads, missing test coverage for refactored code.
 
 ## Conventions established
-- Fire-and-forget async cleanup in event handlers: use `.catch(() => {})`, not async callbacks.
-- `new Promise` wrapper is acceptable when waiting on EventEmitter events — don't force async/await where the event model doesn't support it.
+- Fire-and-forget async cleanup: `.catch(() => {})`, not async callbacks on EventEmitters.
+- `new Promise` wrapper is acceptable for event-based flows (child process exit).
+- Test mocks for async functions must use `async () =>` returns.
+- Independent async I/O calls should use `Promise.all` when possible.
