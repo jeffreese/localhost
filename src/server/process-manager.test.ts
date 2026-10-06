@@ -282,5 +282,34 @@ describe('process-manager', () => {
       killSpy.mockRestore()
       vi.useRealTimers()
     })
+
+    it('falls back to child.kill when pid is undefined', async () => {
+      fakeChild.pid = undefined as unknown as number
+      spawnMock.mockReturnValue(fakeChild)
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+
+      const stopPromise = stopProject('p1')
+      expect(fakeChild.kill).toHaveBeenCalledWith('SIGTERM')
+
+      fakeChild.emit('exit', 0, null)
+      await stopPromise
+    })
+
+    it('falls back to child.kill(SIGKILL) on escalation when pid is undefined', async () => {
+      vi.useFakeTimers()
+      fakeChild.pid = undefined as unknown as number
+      spawnMock.mockReturnValue(fakeChild)
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+
+      const stopPromise = stopProject('p1')
+      expect(fakeChild.kill).toHaveBeenCalledWith('SIGTERM')
+
+      vi.advanceTimersByTime(5000)
+      expect(fakeChild.kill).toHaveBeenCalledWith('SIGKILL')
+
+      fakeChild.emit('exit', 0, null)
+      await stopPromise
+      vi.useRealTimers()
+    })
   })
 })
