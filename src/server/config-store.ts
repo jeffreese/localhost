@@ -71,7 +71,7 @@ function repairConfig(data: Record<string, unknown>): LocalhostConfig {
 let cachedConfig: LocalhostConfig | null = null
 
 export async function readConfig(): Promise<LocalhostConfig> {
-  if (cachedConfig) return cachedConfig
+  if (cachedConfig) return structuredClone(cachedConfig)
 
   await ensureDir()
 
@@ -140,7 +140,7 @@ export function updateConfig(updater: (config: LocalhostConfig) => void): Promis
   })
 }
 
-export function resetCache() {
+export function __resetCache() {
   cachedConfig = null
 }
 

@@ -3,8 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// We need to mock the config path before importing the module
-
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof import('node:os')>('node:os')
   return {
@@ -13,11 +11,25 @@ vi.mock('node:os', async () => {
   }
 })
 
-const { readConfig, writeConfig, updateConfig, resetCache } = await import('./config-store')
+let renameOverride: ((...args: unknown[]) => Promise<void>) | null = null
+
+vi.mock('node:fs/promises', async () => {
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+  return {
+    ...actual,
+    rename: (...args: unknown[]) =>
+      renameOverride
+        ? renameOverride(...args)
+        : actual.rename(args[0] as string, args[1] as string),
+  }
+})
+
+const { readConfig, writeConfig, updateConfig, __resetCache } = await import('./config-store')
 
 describe('config-store', () => {
   beforeEach(() => {
-    resetCache()
+    __resetCache()
+    renameOverride = null
     const configDir = join(tmpdir(), '.localhost')
     if (existsSync(configDir)) {
       rmSync(configDir, { recursive: true })
@@ -180,7 +192,7 @@ describe('config-store', () => {
     expect(cached.ignored).toContain('/write-cache-test')
   })
 
-  it('resetCache forces next readConfig to hit disk', async () => {
+  it('__resetCache forces next readConfig to hit disk', async () => {
     const config = await readConfig()
     config.hidden.push('/before-reset')
     await writeConfig(config)
@@ -195,10 +207,29 @@ describe('config-store', () => {
     expect(cached.hidden).toContain('/before-reset')
 
     // After reset, reads from disk
-    resetCache()
+    __resetCache()
     const fresh = await readConfig()
     expect(fresh.hidden).toContain('/after-reset')
     expect(fresh.hidden).not.toContain('/before-reset')
+  })
+
+  it('cache is not corrupted when writeConfig fails during updateConfig', async () => {
+    await readConfig() // populate cache with defaults
+
+    renameOverride = async () => {
+      throw new Error('disk full')
+    }
+
+    const failing = updateConfig((c) => {
+      c.hidden.push('/should-not-persist')
+    })
+    await expect(failing).rejects.toThrow('disk full')
+
+    renameOverride = null
+
+    // Cache should still return the pre-mutation state
+    const config = await readConfig()
+    expect(config.hidden).not.toContain('/should-not-persist')
   })
 
   it('readConfig recovery paths use atomic writes (no .tmp lingers)', async () => {
