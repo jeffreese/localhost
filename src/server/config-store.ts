@@ -97,7 +97,7 @@ export async function readConfig(): Promise<LocalhostConfig> {
   }
 
   if (isValidConfig(parsed)) {
-    cachedConfig = parsed
+    cachedConfig = structuredClone(parsed)
     return parsed
   }
 
@@ -120,7 +120,7 @@ export async function writeConfig(config: LocalhostConfig): Promise<void> {
   const tmpPath = `${CONFIG_PATH}.tmp`
   await writeFile(tmpPath, JSON.stringify(config, null, 2))
   await rename(tmpPath, CONFIG_PATH)
-  cachedConfig = config
+  cachedConfig = structuredClone(config)
 }
 
 let writeQueue: Promise<void> = Promise.resolve()
