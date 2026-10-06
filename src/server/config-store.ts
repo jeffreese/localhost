@@ -9,6 +9,18 @@ const CONFIG_PATH = join(CONFIG_DIR, 'config.json')
 function defaultConfig(): LocalhostConfig {
   return {
     scanRoot: join(homedir(), 'Code'),
+    projectTypes: {
+      'package.json': {
+        name: 'node',
+        detectManager: true,
+        processNames: ['node', 'bun', 'deno'],
+      },
+      'Cargo.toml': {
+        name: 'rust',
+        defaultCommand: 'cargo run',
+        processNames: ['cargo'],
+      },
+    },
     projects: {},
     pids: {},
     overrides: {},
@@ -16,6 +28,8 @@ function defaultConfig(): LocalhostConfig {
     ignored: [],
     sort: { field: 'name', order: 'asc' },
     customOrder: [],
+    groupConfig: { groups: [], assignments: {} },
+    crashes: {},
   }
 }
 
@@ -23,29 +37,53 @@ async function ensureDir() {
   await mkdir(CONFIG_DIR, { recursive: true })
 }
 
+// Validates core fields only — new optional fields (projectTypes, groupConfig, crashes)
+// may be absent on disk. Callers must run applyDefaults() to fill them.
 function isValidConfig(data: unknown): data is LocalhostConfig {
   if (typeof data !== 'object' || data === null) return false
   const obj = data as Record<string, unknown>
-  return (
-    typeof obj.scanRoot === 'string' &&
-    typeof obj.projects === 'object' &&
-    obj.projects !== null &&
-    typeof obj.pids === 'object' &&
-    obj.pids !== null &&
-    typeof obj.overrides === 'object' &&
-    obj.overrides !== null &&
-    Array.isArray(obj.hidden) &&
-    Array.isArray(obj.ignored) &&
-    typeof obj.sort === 'object' &&
-    obj.sort !== null &&
-    Array.isArray(obj.customOrder)
+  if (
+    !(
+      typeof obj.scanRoot === 'string' &&
+      typeof obj.projects === 'object' &&
+      obj.projects !== null &&
+      typeof obj.pids === 'object' &&
+      obj.pids !== null &&
+      typeof obj.overrides === 'object' &&
+      obj.overrides !== null &&
+      Array.isArray(obj.hidden) &&
+      Array.isArray(obj.ignored) &&
+      typeof obj.sort === 'object' &&
+      obj.sort !== null &&
+      Array.isArray(obj.customOrder)
+    )
   )
+    return false
+
+  if (
+    obj.projectTypes !== undefined &&
+    (typeof obj.projectTypes !== 'object' || obj.projectTypes === null)
+  )
+    return false
+  if (
+    obj.groupConfig !== undefined &&
+    (typeof obj.groupConfig !== 'object' || obj.groupConfig === null)
+  )
+    return false
+  if (obj.crashes !== undefined && (typeof obj.crashes !== 'object' || obj.crashes === null))
+    return false
+
+  return true
 }
 
 function repairConfig(data: Record<string, unknown>): LocalhostConfig {
   const defaults = defaultConfig()
   return {
     scanRoot: typeof data.scanRoot === 'string' ? data.scanRoot : defaults.scanRoot,
+    projectTypes:
+      typeof data.projectTypes === 'object' && data.projectTypes !== null
+        ? (data.projectTypes as LocalhostConfig['projectTypes'])
+        : defaults.projectTypes,
     projects:
       typeof data.projects === 'object' && data.projects !== null
         ? (data.projects as LocalhostConfig['projects'])
@@ -65,7 +103,23 @@ function repairConfig(data: Record<string, unknown>): LocalhostConfig {
       typeof data.sort === 'object' && data.sort !== null
         ? (data.sort as LocalhostConfig['sort'])
         : defaults.sort,
+    groupConfig:
+      typeof data.groupConfig === 'object' && data.groupConfig !== null
+        ? (data.groupConfig as LocalhostConfig['groupConfig'])
+        : defaults.groupConfig,
+    crashes:
+      typeof data.crashes === 'object' && data.crashes !== null
+        ? (data.crashes as LocalhostConfig['crashes'])
+        : defaults.crashes,
   }
+}
+
+function applyDefaults(config: LocalhostConfig): LocalhostConfig {
+  const defaults = defaultConfig()
+  if (!config.projectTypes) config.projectTypes = defaults.projectTypes
+  if (!config.groupConfig) config.groupConfig = defaults.groupConfig
+  if (!config.crashes) config.crashes = defaults.crashes
+  return config
 }
 
 let cachedConfig: LocalhostConfig | null = null
@@ -97,8 +151,9 @@ export async function readConfig(): Promise<LocalhostConfig> {
   }
 
   if (isValidConfig(parsed)) {
-    cachedConfig = structuredClone(parsed)
-    return parsed
+    const config = applyDefaults(parsed)
+    cachedConfig = structuredClone(config)
+    return config
   }
 
   if (typeof parsed === 'object' && parsed !== null) {

@@ -1,21 +1,18 @@
 # Session Context
 
 ## What's next
-- Task 2.4: Backward-compatible defaults for new config fields (`projectTypes`, `groupConfig`, `crashes`) in `readConfig`.
-- Task 2.5: Integration tests for concurrent updates, crash-during-write recovery, cache invalidation.
+- Task 2.5: Integration tests for concurrent updates, crash-during-write recovery, cache invalidation. This completes Epic 2.
+- After Epic 2 completes, Epic 3 (Process Group Lifecycle) is next.
 
 ## Key constraints (carried forward)
-- `updateConfig` serializes via a promise-chain queue (`writeQueue`). The entire read-modify-write cycle runs inside the queue.
-- `readConfig` returns from an in-memory cache after the first successful read. Cache is populated on disk read and updated by `writeConfig`.
-- Recovery paths in `readConfig` call `writeConfig`, so they automatically update the cache.
-- `resetCache()` exported for test isolation — clears the in-memory cache so the next `readConfig` hits disk.
-
-## Judgment calls this session
-- No deep-copy on cache read. All production `readConfig` callers use the returned object read-only; mutations go through `updateConfig`. Deep-copying would defeat the purpose of caching. The convention is documented in CLAUDE.md ("Always go through `updateConfig()` which serializes access").
-- `resetCache` exported as a named function rather than a test-only module trick. It's explicit and simple.
+- Config store now has three new optional fields: `projectTypes`, `groupConfig`, `crashes`. Old configs without them pass `isValidConfig` and get defaults via `applyDefaults`.
+- `applyDefaults` only fills missing fields — it never overwrites existing user-customized values.
+- `repairConfig` also handles all three new fields (for configs that fail `isValidConfig` but are still objects).
+- Cache clone boundaries remain solid: `applyDefaults` runs before `structuredClone` on the valid-config path.
+- All mutations must go through `updateConfig`. Direct `readConfig` → mutate → `writeConfig` bypasses the serialization queue.
+- `__resetCache()` is test-only (follows `__reset*` naming convention).
 
 ## Watch for
-- Task 2.4 will add new fields to `defaultConfig()` and the `repairConfig` path. The cache should be transparent to this — new fields appear in the config object whether it came from cache or disk.
-- Callers must not mutate the object returned by `readConfig` directly — that would corrupt the cache. All mutations must go through `updateConfig`.
+- Task 2.5 should test backward-compat defaults under concurrent access — e.g., old config loaded, defaults applied, then concurrent updateConfig calls.
+- `vi.mock('node:fs/promises')` pattern in config-store.test.ts uses `renameOverride` for write-failure simulation.
 - Async mock consistency — every mock for an async function must use `async () =>` returns.
-- Fire-and-forget patterns — use `.catch(() => {})` on promises in event handlers.

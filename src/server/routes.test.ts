@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 let mockConfig: LocalhostConfig = {
   scanRoot: '/tmp/Code',
+  projectTypes: {
+    'package.json': { name: 'node', detectManager: true, processNames: ['node', 'bun', 'deno'] },
+    'Cargo.toml': { name: 'rust', defaultCommand: 'cargo run', processNames: ['cargo'] },
+  },
   projects: {},
   pids: {},
   overrides: {},
@@ -10,6 +14,8 @@ let mockConfig: LocalhostConfig = {
   ignored: [],
   sort: { field: 'name', order: 'asc' },
   customOrder: [],
+  groupConfig: { groups: [], assignments: {} },
+  crashes: {},
 }
 
 vi.mock('./config-store', () => ({
@@ -44,6 +50,10 @@ const { default: app } = await import('./index')
 function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
   mockConfig = {
     scanRoot: '/tmp/Code',
+    projectTypes: {
+      'package.json': { name: 'node', detectManager: true, processNames: ['node', 'bun', 'deno'] },
+      'Cargo.toml': { name: 'rust', defaultCommand: 'cargo run', processNames: ['cargo'] },
+    },
     projects: {},
     pids: {},
     overrides: {},
@@ -51,8 +61,10 @@ function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
     ignored: [],
     sort: { field: 'name', order: 'asc' },
     customOrder: [],
+    groupConfig: { groups: [], assignments: {} },
+    crashes: {},
     ...overrides,
-  } as LocalhostConfig
+  }
 }
 
 describe('routes', () => {

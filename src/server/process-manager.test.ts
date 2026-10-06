@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 let storedConfig: LocalhostConfig = {
   scanRoot: '/tmp/Code',
+  projectTypes: {
+    'package.json': { name: 'node', detectManager: true, processNames: ['node', 'bun', 'deno'] },
+    'Cargo.toml': { name: 'rust', defaultCommand: 'cargo run', processNames: ['cargo'] },
+  },
   projects: {},
   pids: {},
   overrides: {},
@@ -11,6 +15,8 @@ let storedConfig: LocalhostConfig = {
   ignored: [],
   sort: { field: 'name', order: 'asc' },
   customOrder: [],
+  groupConfig: { groups: [], assignments: {} },
+  crashes: {},
 }
 
 vi.mock('./config-store', () => ({
@@ -56,6 +62,10 @@ const {
 function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
   storedConfig = {
     scanRoot: '/tmp/Code',
+    projectTypes: {
+      'package.json': { name: 'node', detectManager: true, processNames: ['node', 'bun', 'deno'] },
+      'Cargo.toml': { name: 'rust', defaultCommand: 'cargo run', processNames: ['cargo'] },
+    },
     projects: {},
     pids: {},
     overrides: {},
@@ -63,8 +73,10 @@ function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
     ignored: [],
     sort: { field: 'name', order: 'asc' },
     customOrder: [],
+    groupConfig: { groups: [], assignments: {} },
+    crashes: {},
     ...overrides,
-  } as LocalhostConfig
+  }
 }
 
 describe('process-manager', () => {
