@@ -118,6 +118,7 @@ api.post('/projects/:id/stop', async (c) => {
 
   // Also stop any process we spawned
   await stopProject(projectId)
+  broadcast({ type: 'process-stopped', data: { projectId } })
   return c.json({ status: 'stopped', projectId })
 })
 
