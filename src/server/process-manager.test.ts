@@ -127,6 +127,28 @@ describe('process-manager', () => {
     })
   })
 
+  describe('startProject', () => {
+    beforeEach(() => {
+      __resetLogBuffers()
+      __resetActiveProcesses()
+      fakeChild = new FakeChild()
+      spawnMock.mockReset()
+      spawnMock.mockReturnValue(fakeChild)
+      resetConfig()
+    })
+
+    it('spawns with detached: true and explicit stdio pipes', async () => {
+      await startProject('p1', '/tmp/p1', 'pnpm', 'dev')
+
+      expect(spawnMock).toHaveBeenCalledWith('pnpm', ['dev'], {
+        cwd: '/tmp/p1',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
+        env: expect.objectContaining({ FORCE_COLOR: '1' }),
+      })
+    })
+  })
+
   describe('ring buffer', () => {
     beforeEach(() => {
       __resetLogBuffers()

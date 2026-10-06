@@ -1,15 +1,16 @@
 # Session Context
 
 ## What's next
-- Epic 2 (Config Store Hardening) is complete after task 2.5.
-- Next: Epic 3 (Process Group Lifecycle) — task 3.1: spawn with `detached: true`, pipe stdout/stderr.
+- Task 3.2: Modify `stopProject` to use `process.kill(-pid, 'SIGTERM')` (process group signal). SIGKILL escalation targets the group.
+- Tasks 3.3-3.7 continue the Process Group Lifecycle epic.
 
 ## Key constraints (carried forward)
-- Config store is fully hardened: atomic writes, serialized queue, cached with structuredClone on all boundaries, backward-compat defaults for new fields.
-- 81 tests cover the config store: unit, clone boundaries, backward compat, concurrent updates (10 rapid-fire), crash-during-write recovery, cache invalidation.
-- `isValidConfig` validates core fields only — new fields may be absent on disk. `applyDefaults()` fills them. Documented coupling.
+- `startProject` now spawns with `detached: true` and `stdio: ['ignore', 'pipe', 'pipe']`. Verified that macOS setsid() creates a process group with PGID = child PID.
+- Process group signal `kill(-pid)` works on macOS — validated with a prototype.
+- `stopProject` still uses positive-PID signals and `child.kill()` — task 3.2 will change this to group signals.
+- Task 3.6 (double exit handler fix) is a separate task — don't fix the double exit handler registration in stopProject yet.
 
 ## Watch for
-- Epic 3 touches process-manager.ts heavily. The process manager reads/writes config via `updateConfig` — serialization is solid.
-- `renameOverride` mock pattern in config-store.test.ts is established for simulating write failures.
-- Process group signals on macOS need prototype validation (risk flag from retrofit spec).
+- `stopProject` registers a second `child.on('exit')` listener alongside the one from `startProject`. Task 3.6 addresses this.
+- `stopProject`'s fallback path (no active child, kill via stored PID) still sends positive-PID signals — task 3.2 will address this.
+- The `child.kill('SIGTERM')` call in `stopProject` sends SIGTERM to the child process only, not the group. With detached=true, this may leave grandchildren running. Task 3.2 fixes this.
