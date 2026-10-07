@@ -1,5 +1,5 @@
 import type { LocalhostConfig } from '@shared/types'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 let mockConfig: LocalhostConfig = {
   scanRoot: '/tmp/Code',
@@ -27,8 +27,10 @@ vi.mock('./config-store', () => ({
   }),
 }))
 
+let mockListenerMap: Record<string, { pid: number; port: number }[]> = {}
+
 vi.mock('./process-manager', () => ({
-  detectAllListeners: async () => ({}),
+  detectAllListeners: vi.fn(async () => mockListenerMap),
   startProject: vi.fn(async () => ({})),
   stopProject: vi.fn(async () => {}),
   stopListener: vi.fn(async () => {}),
@@ -46,8 +48,10 @@ vi.mock('./sse', () => ({
 }))
 
 const { default: app } = await import('./index')
+const { startProject } = await import('./process-manager')
 
 function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
+  mockListenerMap = {}
   mockConfig = {
     scanRoot: '/tmp/Code',
     projectTypes: {
@@ -135,5 +139,101 @@ describe('routes', () => {
     })
     expect(res.status).toBe(200)
     expect(mockConfig.hidden).toContain('/tmp/my-app')
+  })
+
+  describe('port override', () => {
+    const projectConfig = {
+      projects: {
+        '/tmp/my-app': {
+          name: 'my-app',
+          path: '/tmp/my-app',
+          packageManager: 'pnpm' as const,
+          devScript: 'dev',
+          githubUrl: null,
+        },
+      },
+    }
+
+    beforeEach(() => {
+      resetConfig(projectConfig)
+      vi.mocked(startProject).mockClear()
+    })
+
+    it('passes portOverride to startProject when config has port override', async () => {
+      resetConfig({
+        ...projectConfig,
+        overrides: { '/tmp/my-app': { port: 4000 } },
+      })
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app/start', { method: 'POST' })
+      expect(res.status).toBe(200)
+      expect(startProject).toHaveBeenCalledWith(
+        '/tmp/my-app',
+        '/tmp/my-app',
+        'pnpm',
+        'dev',
+        expect.any(Function),
+        expect.any(Function),
+        4000,
+      )
+    })
+
+    it('passes undefined portOverride when no override configured', async () => {
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app/start', { method: 'POST' })
+      expect(res.status).toBe(200)
+      expect(startProject).toHaveBeenCalledWith(
+        '/tmp/my-app',
+        '/tmp/my-app',
+        'pnpm',
+        'dev',
+        expect.any(Function),
+        expect.any(Function),
+        undefined,
+      )
+    })
+
+    it('returns 409 when override port is occupied by another project', async () => {
+      resetConfig({
+        ...projectConfig,
+        overrides: { '/tmp/my-app': { port: 3000 } },
+      })
+      mockListenerMap = {
+        '/tmp/other-app': [{ pid: 999, port: 3000 }],
+      }
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app/start', { method: 'POST' })
+      expect(res.status).toBe(409)
+      const body = await res.json()
+      expect(body).toEqual({
+        error: 'Port 3000 is already in use',
+        conflictingProject: '/tmp/other-app',
+        port: 3000,
+      })
+      expect(startProject).not.toHaveBeenCalled()
+    })
+
+    it('skips self-conflict when project already listens on its override port', async () => {
+      resetConfig({
+        ...projectConfig,
+        overrides: { '/tmp/my-app': { port: 3000 } },
+      })
+      mockListenerMap = {
+        '/tmp/my-app': [{ pid: 111, port: 3000 }],
+      }
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app/start', { method: 'POST' })
+      expect(res.status).toBe(200)
+      expect(startProject).toHaveBeenCalled()
+    })
+
+    it('proceeds when override port is free', async () => {
+      resetConfig({
+        ...projectConfig,
+        overrides: { '/tmp/my-app': { port: 5000 } },
+      })
+      mockListenerMap = {
+        '/tmp/other-app': [{ pid: 999, port: 3000 }],
+      }
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app/start', { method: 'POST' })
+      expect(res.status).toBe(200)
+      expect(startProject).toHaveBeenCalled()
+    })
   })
 })
