@@ -117,14 +117,19 @@ export class BackgroundPoller {
       const diff = diffListeners(this.previousListeners, current)
       this.lastDiff = diff
       this.previousListeners = current
-      if (
-        this.onDiff &&
-        (diff.started.length > 0 ||
-          diff.stopped.length > 0 ||
-          diff.portsAdded.length > 0 ||
-          diff.portsRemoved.length > 0)
-      ) {
-        this.onDiff(diff)
+      const hasChanges =
+        diff.started.length > 0 || diff.stopped.length > 0 || diff.portsAdded.length > 0
+      if (this.onDiff && hasChanges) {
+        try {
+          const result: unknown = this.onDiff(structuredClone(diff))
+          if (result && typeof (result as { catch?: unknown }).catch === 'function') {
+            ;(result as Promise<unknown>).catch((err) => {
+              console.error('[BackgroundPoller] onDiff error:', err)
+            })
+          }
+        } catch (err) {
+          console.error('[BackgroundPoller] onDiff error:', err)
+        }
       }
     } finally {
       this.tickRunning = false

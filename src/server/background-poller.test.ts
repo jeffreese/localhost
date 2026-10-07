@@ -285,11 +285,26 @@ describe('broadcastDiff', () => {
       },
       (e) => events.push(e),
     )
+    expect(events).toHaveLength(3)
     expect(events.map((e) => e.type)).toEqual([
       'process-started',
       'process-stopped',
       'port-detected',
     ])
+  })
+
+  it('does not emit events for portsRemoved', () => {
+    const events: Array<{ type: string; data: unknown }> = []
+    broadcastDiff(
+      {
+        started: [],
+        stopped: [],
+        portsAdded: [],
+        portsRemoved: [{ projectId: 'a', port: 3000 }],
+      },
+      (e) => events.push(e),
+    )
+    expect(events).toHaveLength(0)
   })
 })
 
@@ -335,5 +350,68 @@ describe('BackgroundPoller onDiff callback', () => {
     poller.start(100)
     await vi.advanceTimersByTimeAsync(100)
     expect(poller.getLastDiff()).not.toBeNull()
+  })
+
+  it('passes a cloned diff to onDiff callback', async () => {
+    let received: unknown = null
+    poller.setOnDiff((diff) => {
+      received = diff
+    })
+
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    const cached = poller.getLastDiff()
+    expect(received).toEqual(cached)
+    expect(received).not.toBe(poller.getLastDiff())
+  })
+
+  it('catches synchronous onDiff errors', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    poller.setOnDiff(() => {
+      throw new Error('sync boom')
+    })
+
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(consoleSpy).toHaveBeenCalledWith('[BackgroundPoller] onDiff error:', expect.any(Error))
+    expect(poller.getTickCount()).toBe(1)
+    consoleSpy.mockRestore()
+  })
+
+  it('catches async onDiff errors', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    poller.setOnDiff((() => Promise.reject(new Error('async boom'))) as () => void)
+
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(consoleSpy).toHaveBeenCalledWith('[BackgroundPoller] onDiff error:', expect.any(Error))
+    consoleSpy.mockRestore()
+  })
+
+  it('does not call onDiff for portsRemoved-only changes', async () => {
+    const diffs: Array<unknown> = []
+    poller.setOnDiff((diff) => diffs.push(diff))
+
+    mockDetect.mockResolvedValueOnce({
+      a: [
+        { pid: 1, port: 3000 },
+        { pid: 1, port: 3001 },
+      ],
+    })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+    diffs.length = 0
+
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(diffs).toHaveLength(0)
   })
 })
