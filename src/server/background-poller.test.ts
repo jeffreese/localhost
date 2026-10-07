@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BackgroundPoller } from './background-poller'
+import { BackgroundPoller, diffListeners } from './background-poller'
 
 vi.mock('./process-manager', () => ({
   detectAllListeners: vi.fn().mockResolvedValue({}),
@@ -114,5 +114,120 @@ describe('BackgroundPoller', () => {
     poller.stop()
     await vi.advanceTimersByTimeAsync(300)
     expect(mockDetect).toHaveBeenCalledTimes(1)
+  })
+
+  it('computes diff between ticks', async () => {
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    mockDetect.mockResolvedValueOnce({
+      a: [
+        { pid: 1, port: 3000 },
+        { pid: 1, port: 3001 },
+      ],
+      b: [{ pid: 2, port: 4000 }],
+    })
+    await vi.advanceTimersByTimeAsync(100)
+
+    const diff = poller.getLastDiff()
+    if (!diff) throw new Error('expected diff')
+    expect(diff.started).toEqual(['b'])
+    expect(diff.stopped).toEqual([])
+    expect(diff.portsAdded).toEqual([{ projectId: 'a', port: 3001 }])
+    expect(diff.portsRemoved).toEqual([])
+  })
+
+  it('returns null diff before first tick', () => {
+    expect(poller.getLastDiff()).toBeNull()
+  })
+})
+
+describe('diffListeners', () => {
+  it('returns empty diff for identical states', () => {
+    const state = { a: [{ pid: 1, port: 3000 }] }
+    const diff = diffListeners(state, state)
+    expect(diff.started).toEqual([])
+    expect(diff.stopped).toEqual([])
+    expect(diff.portsAdded).toEqual([])
+    expect(diff.portsRemoved).toEqual([])
+  })
+
+  it('detects new projects as started', () => {
+    const diff = diffListeners({}, { a: [{ pid: 1, port: 3000 }] })
+    expect(diff.started).toEqual(['a'])
+    expect(diff.portsAdded).toEqual([])
+  })
+
+  it('detects removed projects as stopped', () => {
+    const diff = diffListeners({ a: [{ pid: 1, port: 3000 }] }, {})
+    expect(diff.stopped).toEqual(['a'])
+    expect(diff.portsRemoved).toEqual([])
+  })
+
+  it('detects added ports on existing projects', () => {
+    const diff = diffListeners(
+      { a: [{ pid: 1, port: 3000 }] },
+      {
+        a: [
+          { pid: 1, port: 3000 },
+          { pid: 1, port: 3001 },
+        ],
+      },
+    )
+    expect(diff.started).toEqual([])
+    expect(diff.portsAdded).toEqual([{ projectId: 'a', port: 3001 }])
+  })
+
+  it('detects removed ports on existing projects', () => {
+    const diff = diffListeners(
+      {
+        a: [
+          { pid: 1, port: 3000 },
+          { pid: 1, port: 3001 },
+        ],
+      },
+      { a: [{ pid: 1, port: 3000 }] },
+    )
+    expect(diff.stopped).toEqual([])
+    expect(diff.portsRemoved).toEqual([{ projectId: 'a', port: 3001 }])
+  })
+
+  it('handles simultaneous started, stopped, and port changes', () => {
+    const prev = {
+      a: [{ pid: 1, port: 3000 }],
+      b: [
+        { pid: 2, port: 4000 },
+        { pid: 2, port: 4001 },
+      ],
+    }
+    const curr = {
+      a: [
+        { pid: 1, port: 3000 },
+        { pid: 1, port: 3001 },
+      ],
+      c: [{ pid: 3, port: 5000 }],
+    }
+    const diff = diffListeners(prev, curr)
+    expect(diff.started).toEqual(['c'])
+    expect(diff.stopped).toEqual(['b'])
+    expect(diff.portsAdded).toEqual([{ projectId: 'a', port: 3001 }])
+    expect(diff.portsRemoved).toEqual([])
+  })
+
+  it('returns empty diff for two empty states', () => {
+    const diff = diffListeners({}, {})
+    expect(diff.started).toEqual([])
+    expect(diff.stopped).toEqual([])
+    expect(diff.portsAdded).toEqual([])
+    expect(diff.portsRemoved).toEqual([])
+  })
+
+  it('handles project with all ports replaced', () => {
+    const diff = diffListeners({ a: [{ pid: 1, port: 3000 }] }, { a: [{ pid: 2, port: 4000 }] })
+    expect(diff.started).toEqual([])
+    expect(diff.stopped).toEqual([])
+    expect(diff.portsAdded).toEqual([{ projectId: 'a', port: 4000 }])
+    expect(diff.portsRemoved).toEqual([{ projectId: 'a', port: 3000 }])
   })
 })
