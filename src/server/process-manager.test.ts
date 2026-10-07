@@ -300,9 +300,15 @@ describe('process-manager', () => {
     })
 
     it('does not add PORT env var when portOverride is undefined', async () => {
-      await startProject('p1', '/tmp/p1', 'pnpm', 'dev')
-      const spawnEnv = spawnMock.mock.calls[0][2].env
-      expect(spawnEnv.PORT).toBe(process.env.PORT)
+      const savedPort = process.env.PORT
+      Reflect.deleteProperty(process.env, 'PORT')
+      try {
+        await startProject('p1', '/tmp/p1', 'pnpm', 'dev')
+        const spawnEnv = spawnMock.mock.calls[0][2].env
+        expect(spawnEnv).not.toHaveProperty('PORT')
+      } finally {
+        if (savedPort !== undefined) process.env.PORT = savedPort
+      }
     })
   })
 

@@ -91,8 +91,8 @@ export async function startProject(
   // Fresh start = fresh console. Clear any retained buffer from a prior run.
   logBuffers.delete(projectId)
 
-  const env: Record<string, string> = {
-    ...(process.env as Record<string, string>),
+  const env: Record<string, string | undefined> = {
+    ...process.env,
     FORCE_COLOR: '1',
   }
   if (portOverride !== undefined) {
