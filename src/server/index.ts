@@ -40,9 +40,11 @@ async function gracefulShutdown() {
 if (process.env.NODE_ENV !== 'test') {
   serve({ fetch: app.fetch, port }, () => {
     console.log(`Localhost server running on http://localhost:${port}`)
-    cleanupStalePids().then((removed) => {
-      if (removed > 0) console.log(`Cleaned up ${removed} stale PID(s)`)
-    })
+    cleanupStalePids()
+      .then((removed) => {
+        if (removed > 0) console.log(`Cleaned up ${removed} stale PID(s)`)
+      })
+      .catch((err) => console.error('Startup PID cleanup failed:', err))
   })
 
   process.on('SIGTERM', gracefulShutdown)
