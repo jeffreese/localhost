@@ -30,7 +30,7 @@ date: 2026-10-05
 - [x] 3.4 Add shutdown handlers in index.ts: SIGTERM/SIGINT/exit → kill all active process groups with grace period.
 - [x] 3.5 Implement startup PID cleanup: iterate `config.pids`, verify each, remove dead/stale.
 - [x] 3.6 Fix double exit handler: single `child.on('exit')` handler, not re-registered on stop.
-- [ ] 3.7 Write tests: process group kill, PID verification, shutdown cleanup, stale PID pruning.
+- [x] 3.7 Write tests: process group kill, PID verification, shutdown cleanup, stale PID pruning.
 
 ## Epic 4: Stale Code Removal
 

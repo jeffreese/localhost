@@ -248,6 +248,45 @@ describe('process-manager', () => {
         env: expect.objectContaining({ FORCE_COLOR: '1' }),
       })
     })
+
+    it('stores the child PID in config on spawn', async () => {
+      const { updateConfig: mockUpdateConfig } = await import('./config-store')
+      ;(mockUpdateConfig as ReturnType<typeof vi.fn>).mockClear()
+      fakeChild.pid = 54321
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+
+      expect(mockUpdateConfig).toHaveBeenCalledTimes(1)
+      expect(storedConfig.pids.p1).toBe(54321)
+    })
+
+    it('throws when a project is already running', async () => {
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+
+      await expect(startProject('p1', '/tmp/p1', 'npm', 'dev')).rejects.toThrow(
+        'Project p1 is already running',
+      )
+    })
+
+    it('removes process from activeProcesses on exit', async () => {
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+      fakeChild.emit('exit', 0, null)
+
+      // After exit, starting the same project should not throw
+      fakeChild = new FakeChild()
+      spawnMock.mockReturnValue(fakeChild)
+      await expect(startProject('p1', '/tmp/p1', 'npm', 'dev')).resolves.toBeDefined()
+    })
+
+    it('removes PID from config on exit', async () => {
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+      storedConfig.pids.p1 = 12345
+      fakeChild.emit('exit', 0, null)
+
+      // Wait for the async updateConfig in the exit handler
+      await vi.waitFor(() => {
+        expect(storedConfig.pids.p1).toBeUndefined()
+      })
+    })
   })
 
   describe('ring buffer', () => {
@@ -504,6 +543,57 @@ describe('process-manager', () => {
       fakeChild.emit('exit', 0, null)
       await stopPromise
       vi.useRealTimers()
+    })
+
+    it('cleans config when stored PID group signal throws (already dead)', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+        _pid: number,
+        signal?: string | number,
+      ) => {
+        if (signal === 0) return true
+        if (signal === 'SIGTERM') throw new Error('ESRCH')
+        return true
+      }) as typeof process.kill)
+      mockLsofCwd(9999, '/tmp/p1')
+      resetConfig({
+        pids: { p1: 9999 },
+        projects: {
+          p1: {
+            name: 'p1',
+            path: '/tmp/p1',
+            packageManager: 'npm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+        },
+      })
+
+      await stopProject('p1')
+
+      expect(killSpy).toHaveBeenCalledWith(-9999, 'SIGTERM')
+      expect(storedConfig.pids.p1).toBeUndefined()
+      killSpy.mockRestore()
+    })
+
+    it('stopping one project does not affect another running project', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+      const p1Child = fakeChild
+
+      fakeChild = new FakeChild()
+      fakeChild.pid = 67890
+      spawnMock.mockReturnValue(fakeChild)
+      await startProject('p2', '/tmp/p2', 'npm', 'dev')
+
+      const stopPromise = stopProject('p1')
+      p1Child.emit('exit', 0, null)
+      await stopPromise
+
+      // p2 should still be startable only after we stop it — trying to start again should throw
+      await expect(startProject('p2', '/tmp/p2', 'npm', 'dev')).rejects.toThrow(
+        'Project p2 is already running',
+      )
+      killSpy.mockRestore()
     })
   })
 
