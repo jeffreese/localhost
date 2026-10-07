@@ -35,7 +35,7 @@ date: 2026-10-05
 ## Epic 4: Stale Code Removal
 
 - [x] 4.1 Remove `getPortOwner` from process-manager.ts.
-- [ ] 4.2 Remove `ProcessStore` (src/client/stores/process-store.ts) and all imports.
+- [x] 4.2 Remove `ProcessStore` (src/client/stores/process-store.ts) and all imports.
 - [ ] 4.3 Consolidate duplicate project-mapping in routes.ts into shared `buildProjectResponse`.
 
 ## Epic 13: Port Override Wiring

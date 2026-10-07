@@ -1,6 +1,6 @@
 # Reactive Stores — One Per Domain, No External Libraries
 
-State management uses three typed store classes: ProjectStore, ProcessStore, UIStore. No external state libraries (Redux, Zustand, MobX, etc.).
+State management uses typed store classes: ProjectStore, UIStore, ConsoleStore. No external state libraries (Redux, Zustand, MobX, etc.).
 
 Rules:
 - One store per domain — don't merge stores or create overlapping ones
