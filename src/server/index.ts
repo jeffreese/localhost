@@ -1,7 +1,9 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
+import { BackgroundPoller, broadcastDiff } from './background-poller'
 import { cleanupStalePids, getActiveProcesses } from './process-manager'
 import api from './routes'
+import { broadcast } from './sse'
 
 const app = new Hono()
 
@@ -9,6 +11,11 @@ app.get('/api/health', (c) => c.json({ status: 'ok' }))
 app.route('/api', api)
 
 export const port = 7769
+
+const poller = new BackgroundPoller()
+poller.setOnDiff((diff) => {
+  broadcastDiff(diff, broadcast)
+})
 
 function killAllProcessGroups(signal: NodeJS.Signals) {
   for (const child of getActiveProcesses().values()) {
@@ -28,6 +35,7 @@ async function gracefulShutdown() {
   if (shuttingDown) return
   shuttingDown = true
 
+  poller.stop()
   killAllProcessGroups('SIGTERM')
 
   await new Promise((resolve) => setTimeout(resolve, 3000))
@@ -45,6 +53,7 @@ if (process.env.NODE_ENV !== 'test') {
         if (removed > 0) console.log(`Cleaned up ${removed} stale PID(s)`)
       })
       .catch((err) => console.error('Startup PID cleanup failed:', err))
+    poller.start()
   })
 
   process.on('SIGTERM', gracefulShutdown)
@@ -59,6 +68,6 @@ export function __resetShutdownState() {
   shuttingDown = false
 }
 
-export { gracefulShutdown, killAllProcessGroups }
+export { gracefulShutdown, killAllProcessGroups, poller }
 
 export default app

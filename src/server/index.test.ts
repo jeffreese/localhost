@@ -13,9 +13,23 @@ const mockActiveProcesses = new Map<string, FakeChild>()
 
 vi.mock('./process-manager', () => ({
   getActiveProcesses: () => mockActiveProcesses,
+  detectAllListeners: vi.fn().mockResolvedValue({}),
 }))
 
-const { gracefulShutdown, killAllProcessGroups, __resetShutdownState } = await import('./index')
+vi.mock('./sse', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./sse')>()
+  return {
+    ...actual,
+    broadcast: vi.fn(),
+  }
+})
+
+const { gracefulShutdown, killAllProcessGroups, __resetShutdownState, poller } = await import(
+  './index'
+)
+import { broadcast } from './sse'
+
+const mockBroadcast = vi.mocked(broadcast)
 
 describe('server', () => {
   it('responds to health check', async () => {
@@ -131,6 +145,58 @@ describe('gracefulShutdown', () => {
 
     killSpy.mockRestore()
     exitSpy.mockRestore()
+    vi.useRealTimers()
+  })
+})
+
+describe('poller lifecycle', () => {
+  beforeEach(() => {
+    mockActiveProcesses.clear()
+    __resetShutdownState()
+    poller.stop()
+    mockBroadcast.mockReset()
+  })
+
+  it('exports a BackgroundPoller instance', () => {
+    expect(poller).toBeDefined()
+    expect(typeof poller.start).toBe('function')
+    expect(typeof poller.stop).toBe('function')
+    expect(typeof poller.isRunning).toBe('function')
+  })
+
+  it('gracefulShutdown stops the poller', async () => {
+    vi.useFakeTimers()
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    vi.spyOn(process, 'kill').mockImplementation(() => true)
+
+    poller.start(100)
+    expect(poller.isRunning()).toBe(true)
+
+    const shutdownPromise = gracefulShutdown()
+    expect(poller.isRunning()).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(3000)
+    await shutdownPromise
+
+    exitSpy.mockRestore()
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  it('onDiff callback wires broadcastDiff to SSE broadcast', async () => {
+    vi.useFakeTimers()
+    const { detectAllListeners } = await import('./process-manager')
+    const mockDetect = vi.mocked(detectAllListeners)
+    mockDetect.mockResolvedValueOnce({ testProject: [{ pid: 1, port: 3000 }] })
+
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(mockBroadcast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'process-started', data: { projectId: 'testProject' } }),
+    )
+
+    poller.stop()
     vi.useRealTimers()
   })
 })

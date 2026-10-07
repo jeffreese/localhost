@@ -49,10 +49,12 @@ export function diffListeners(previous: ListenerMap, current: ListenerMap): List
 
 export type DiffCallback = (diff: ListenerDiff) => void
 
-export function broadcastDiff(
-  diff: ListenerDiff,
-  emit: (event: { type: string; data: unknown }) => void,
-) {
+export type PollerEvent =
+  | { type: 'process-started'; data: { projectId: string } }
+  | { type: 'process-stopped'; data: { projectId: string } }
+  | { type: 'port-detected'; data: { projectId: string; port: number } }
+
+export function broadcastDiff(diff: ListenerDiff, emit: (event: PollerEvent) => void) {
   for (const projectId of diff.started) {
     emit({ type: 'process-started', data: { projectId } })
   }
