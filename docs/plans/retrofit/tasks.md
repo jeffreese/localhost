@@ -47,7 +47,7 @@ date: 2026-10-05
 ## Epic 5: Background Polling & Reactivity
 
 - [x] 5.1 Create `background-poller.ts`: 5s setInterval, async listener enumeration + project matching.
-- [ ] 5.2 Implement listener diff logic: compare current vs previous, identify new/removed/changed.
+- [x] 5.2 Implement listener diff logic: compare current vs previous, identify new/removed/changed.
 - [ ] 5.3 Wire diff to SSE broadcasts: `process-started`, `process-stopped`, `port-detected`.
 - [x] 5.4 Add overlap guard: skip tick if previous still running.
 - [ ] 5.5 Start poller on server startup, stop on shutdown.
