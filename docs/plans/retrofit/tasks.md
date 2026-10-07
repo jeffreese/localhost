@@ -36,7 +36,7 @@ date: 2026-10-05
 
 - [x] 4.1 Remove `getPortOwner` from process-manager.ts.
 - [x] 4.2 Remove `ProcessStore` (src/client/stores/process-store.ts) and all imports.
-- [ ] 4.3 Consolidate duplicate project-mapping in routes.ts into shared `buildProjectResponse`.
+- [x] 4.3 Consolidate duplicate project-mapping in routes.ts into shared `buildProjectResponse`.
 
 ## Epic 13: Port Override Wiring
 
