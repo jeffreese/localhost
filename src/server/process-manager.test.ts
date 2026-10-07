@@ -287,6 +287,23 @@ describe('process-manager', () => {
         expect(storedConfig.pids.p1).toBeUndefined()
       })
     })
+
+    it('passes PORT env var when portOverride is provided', async () => {
+      await startProject('p1', '/tmp/p1', 'pnpm', 'dev', undefined, undefined, 4000)
+
+      expect(spawnMock).toHaveBeenCalledWith('pnpm', ['dev'], {
+        cwd: '/tmp/p1',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
+        env: expect.objectContaining({ FORCE_COLOR: '1', PORT: '4000' }),
+      })
+    })
+
+    it('does not add PORT env var when portOverride is undefined', async () => {
+      await startProject('p1', '/tmp/p1', 'pnpm', 'dev')
+      const spawnEnv = spawnMock.mock.calls[0][2].env
+      expect(spawnEnv.PORT).toBe(process.env.PORT)
+    })
   })
 
   describe('ring buffer', () => {
