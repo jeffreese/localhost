@@ -41,7 +41,7 @@ date: 2026-10-05
 ## Epic 13: Port Override Wiring
 
 - [x] 13.1 Read `config.overrides[projectId].port` in `startProject`, pass as `PORT` env var.
-- [ ] 13.2 Check port occupancy before starting with override. Return 409 on conflict.
+- [x] 13.2 Check port occupancy before starting with override. Return 409 on conflict.
 - [ ] 13.3 Write tests: port override passed, conflict detection, no-override unchanged.
 
 ## Epic 5: Background Polling & Reactivity

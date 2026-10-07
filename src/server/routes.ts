@@ -83,6 +83,26 @@ api.post('/projects/:id/start', async (c) => {
 
   const override = config.overrides[projectId]
   const devScript = override?.devScript ?? cached.devScript
+  const portOverride = override?.port
+
+  if (portOverride !== undefined) {
+    const listenerMap = await detectAllListeners()
+    for (const [ownerProjectId, listeners] of Object.entries(listenerMap)) {
+      if (ownerProjectId === projectId) continue
+      for (const listener of listeners) {
+        if (listener.port === portOverride) {
+          return c.json(
+            {
+              error: `Port ${portOverride} is already in use`,
+              conflictingProject: ownerProjectId,
+              port: portOverride,
+            },
+            409,
+          )
+        }
+      }
+    }
+  }
 
   try {
     await startProject(
@@ -96,7 +116,7 @@ api.post('/projects/:id/start', async (c) => {
       (id, lines) => {
         broadcast({ type: 'log', data: { projectId: id, lines } })
       },
-      override?.port,
+      portOverride,
     )
     broadcast({ type: 'process-started', data: { projectId } })
     return c.json({ status: 'started', projectId })
