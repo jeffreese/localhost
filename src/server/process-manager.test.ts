@@ -60,6 +60,7 @@ const {
   startProject,
   stopProject,
   verifyPid,
+  cleanupStalePids,
   getLogs,
   hasLogs,
   __resetLogBuffers,
@@ -490,6 +491,176 @@ describe('process-manager', () => {
       fakeChild.emit('exit', 0, null)
       await stopPromise
       vi.useRealTimers()
+    })
+  })
+
+  describe('cleanupStalePids', () => {
+    afterEach(() => {
+      execFileMock.mockReset()
+    })
+
+    it('returns 0 when config.pids is empty', async () => {
+      resetConfig({ pids: {} })
+      const removed = await cleanupStalePids()
+      expect(removed).toBe(0)
+    })
+
+    it('removes dead PIDs (ESRCH)', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
+        const err = new Error('ESRCH') as NodeJS.ErrnoException
+        err.code = 'ESRCH'
+        throw err
+      })
+      resetConfig({
+        pids: { p1: 1111 },
+        projects: {
+          p1: {
+            name: 'p1',
+            path: '/tmp/p1',
+            packageManager: 'npm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+        },
+      })
+
+      const removed = await cleanupStalePids()
+      expect(removed).toBe(1)
+      expect(storedConfig.pids.p1).toBeUndefined()
+      killSpy.mockRestore()
+    })
+
+    it('removes PIDs owned by another user (EPERM)', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
+        const err = new Error('EPERM') as NodeJS.ErrnoException
+        err.code = 'EPERM'
+        throw err
+      })
+      resetConfig({
+        pids: { p1: 2222 },
+        projects: {
+          p1: {
+            name: 'p1',
+            path: '/tmp/p1',
+            packageManager: 'npm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+        },
+      })
+
+      const removed = await cleanupStalePids()
+      expect(removed).toBe(1)
+      expect(storedConfig.pids.p1).toBeUndefined()
+      killSpy.mockRestore()
+    })
+
+    it('removes PIDs with mismatched cwd', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      mockLsofCwd(3333, '/tmp/wrong-project')
+      resetConfig({
+        pids: { p1: 3333 },
+        projects: {
+          p1: {
+            name: 'p1',
+            path: '/tmp/p1',
+            packageManager: 'npm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+        },
+      })
+
+      const removed = await cleanupStalePids()
+      expect(removed).toBe(1)
+      expect(storedConfig.pids.p1).toBeUndefined()
+      killSpy.mockRestore()
+    })
+
+    it('removes PIDs with no project path in config', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      resetConfig({ pids: { p1: 4444 } })
+
+      const removed = await cleanupStalePids()
+      expect(removed).toBe(1)
+      expect(storedConfig.pids.p1).toBeUndefined()
+      killSpy.mockRestore()
+    })
+
+    it('keeps verified PIDs', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      mockLsofCwd(5555, '/tmp/p1')
+      resetConfig({
+        pids: { p1: 5555 },
+        projects: {
+          p1: {
+            name: 'p1',
+            path: '/tmp/p1',
+            packageManager: 'npm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+        },
+      })
+
+      const removed = await cleanupStalePids()
+      expect(removed).toBe(0)
+      expect(storedConfig.pids.p1).toBe(5555)
+      killSpy.mockRestore()
+    })
+
+    it('handles a mix of stale and valid PIDs', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+        pid: number,
+        signal?: string | number,
+      ) => {
+        if (signal === 0 && pid === 1111) {
+          const err = new Error('ESRCH') as NodeJS.ErrnoException
+          err.code = 'ESRCH'
+          throw err
+        }
+        return true
+      }) as typeof process.kill)
+      execFileMock.mockImplementation(
+        (
+          _cmd: string,
+          args: string[],
+          _opts: unknown,
+          cb: (err: Error | null, stdout: string) => void,
+        ) => {
+          const pid = Number(args[1])
+          if (pid === 2222) {
+            cb(null, 'p2222\nn/tmp/p2\n')
+          } else {
+            cb(null, '')
+          }
+        },
+      )
+      resetConfig({
+        pids: { p1: 1111, p2: 2222 },
+        projects: {
+          p1: {
+            name: 'p1',
+            path: '/tmp/p1',
+            packageManager: 'npm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+          p2: {
+            name: 'p2',
+            path: '/tmp/p2',
+            packageManager: 'npm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+        },
+      })
+
+      const removed = await cleanupStalePids()
+      expect(removed).toBe(1)
+      expect(storedConfig.pids.p1).toBeUndefined()
+      expect(storedConfig.pids.p2).toBe(2222)
+      killSpy.mockRestore()
     })
   })
 })

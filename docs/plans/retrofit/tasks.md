@@ -28,7 +28,7 @@ date: 2026-10-05
 - [x] 3.2 Modify `stopProject` to use `process.kill(-pid, 'SIGTERM')` (process group signal). SIGKILL escalation targets the group.
 - [x] 3.3 Implement PID verification: before signaling, check PID alive and cwd matches project path. Refuse on mismatch.
 - [x] 3.4 Add shutdown handlers in index.ts: SIGTERM/SIGINT/exit → kill all active process groups with grace period.
-- [ ] 3.5 Implement startup PID cleanup: iterate `config.pids`, verify each, remove dead/stale.
+- [x] 3.5 Implement startup PID cleanup: iterate `config.pids`, verify each, remove dead/stale.
 - [ ] 3.6 Fix double exit handler: single `child.on('exit')` handler, not re-registered on stop.
 - [ ] 3.7 Write tests: process group kill, PID verification, shutdown cleanup, stale PID pruning.
 

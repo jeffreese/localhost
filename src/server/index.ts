@@ -1,6 +1,6 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
-import { getActiveProcesses } from './process-manager'
+import { cleanupStalePids, getActiveProcesses } from './process-manager'
 import api from './routes'
 
 const app = new Hono()
@@ -40,6 +40,11 @@ async function gracefulShutdown() {
 if (process.env.NODE_ENV !== 'test') {
   serve({ fetch: app.fetch, port }, () => {
     console.log(`Localhost server running on http://localhost:${port}`)
+    cleanupStalePids()
+      .then((removed) => {
+        if (removed > 0) console.log(`Cleaned up ${removed} stale PID(s)`)
+      })
+      .catch((err) => console.error('Startup PID cleanup failed:', err))
   })
 
   process.on('SIGTERM', gracefulShutdown)
