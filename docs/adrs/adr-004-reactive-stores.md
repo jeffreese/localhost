@@ -21,11 +21,11 @@ Localhost's dashboard needs to reflect real-time state from the backend (process
 
 We will use **small, typed reactive store classes** — one per domain:
 
-- **ProjectStore** — discovered projects, metadata, visibility (visible/hidden/ignored)
-- **ProcessStore** — running state, PIDs, ports, health, port conflicts
+- **ProjectStore** — discovered projects, metadata, visibility (visible/hidden/ignored), process state
 - **UIStore** — dashboard view state (local only, no backend persistence)
+- **ConsoleStore** — log buffer per project, open/close state, disk hydration
 
-Stores are observable: Lit components subscribe on `connectedCallback`, unsubscribe on `disconnectedCallback`. The SSE event handler pushes backend state into ProjectStore and ProcessStore. No external state management framework.
+Stores are observable: Lit components subscribe on `connectedCallback`, unsubscribe on `disconnectedCallback`. The SSE event handler pushes backend state into ProjectStore and ConsoleStore. No external state management framework.
 
 ## Alternatives Considered
 
