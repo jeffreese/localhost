@@ -1,3 +1,4 @@
+import type { Listener, LocalhostConfig, Project, ProjectCache, Visibility } from '@shared/types'
 import { Hono } from 'hono'
 import { readConfig, updateConfig } from './config-store'
 import {
@@ -11,6 +12,27 @@ import {
 import { scanAndPersist } from './scanner'
 import { broadcast, handleSSE } from './sse'
 
+function buildProjectResponse(
+  id: string,
+  cached: ProjectCache,
+  listeners: Listener[],
+  config: LocalhostConfig,
+): Project {
+  const visibility: Visibility = config.ignored.includes(id)
+    ? 'ignored'
+    : config.hidden.includes(id)
+      ? 'hidden'
+      : 'visible'
+  return {
+    id,
+    ...cached,
+    visibility,
+    listeners,
+    processState: listeners.length > 0 ? 'running' : 'stopped',
+    spawnedByUs: hasLogs(id),
+  }
+}
+
 const api = new Hono()
 
 // GET /api/projects — list all projects with current state
@@ -18,21 +40,9 @@ api.get('/projects', async (c) => {
   const config = await readConfig()
   const listenerMap = await detectAllListeners()
 
-  const projects = Object.entries(config.projects).map(([id, cached]) => {
-    const listeners = listenerMap[id] ?? []
-    return {
-      id,
-      ...cached,
-      visibility: config.ignored.includes(id)
-        ? 'ignored'
-        : config.hidden.includes(id)
-          ? 'hidden'
-          : 'visible',
-      listeners,
-      processState: listeners.length > 0 ? 'running' : 'stopped',
-      spawnedByUs: hasLogs(id),
-    }
-  })
+  const projects = Object.entries(config.projects).map(([id, cached]) =>
+    buildProjectResponse(id, cached, listenerMap[id] ?? [], config),
+  )
 
   return c.json(projects)
 })
@@ -43,21 +53,9 @@ api.post('/scan', async (c) => {
   const config = await readConfig()
   const listenerMap = await detectAllListeners()
 
-  const result = Array.from(projects.entries()).map(([id, cached]) => {
-    const listeners = listenerMap[id] ?? []
-    return {
-      id,
-      ...cached,
-      visibility: config.ignored.includes(id)
-        ? 'ignored'
-        : config.hidden.includes(id)
-          ? 'hidden'
-          : 'visible',
-      listeners,
-      processState: listeners.length > 0 ? 'running' : 'stopped',
-      spawnedByUs: hasLogs(id),
-    }
-  })
+  const result = Array.from(projects.entries()).map(([id, cached]) =>
+    buildProjectResponse(id, cached, listenerMap[id] ?? [], config),
+  )
 
   broadcast({ type: 'scan-complete', data: result })
   return c.json(result)
