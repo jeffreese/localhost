@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BackgroundPoller, diffListeners } from './background-poller'
+import { BackgroundPoller, broadcastDiff, diffListeners } from './background-poller'
 
 vi.mock('./process-manager', () => ({
   detectAllListeners: vi.fn().mockResolvedValue({}),
@@ -229,5 +229,111 @@ describe('diffListeners', () => {
     expect(diff.stopped).toEqual([])
     expect(diff.portsAdded).toEqual([{ projectId: 'a', port: 4000 }])
     expect(diff.portsRemoved).toEqual([{ projectId: 'a', port: 3000 }])
+  })
+})
+
+describe('broadcastDiff', () => {
+  it('emits process-started for new projects', () => {
+    const events: Array<{ type: string; data: unknown }> = []
+    broadcastDiff({ started: ['a', 'b'], stopped: [], portsAdded: [], portsRemoved: [] }, (e) =>
+      events.push(e),
+    )
+    expect(events).toEqual([
+      { type: 'process-started', data: { projectId: 'a' } },
+      { type: 'process-started', data: { projectId: 'b' } },
+    ])
+  })
+
+  it('emits process-stopped for removed projects', () => {
+    const events: Array<{ type: string; data: unknown }> = []
+    broadcastDiff({ started: [], stopped: ['x'], portsAdded: [], portsRemoved: [] }, (e) =>
+      events.push(e),
+    )
+    expect(events).toEqual([{ type: 'process-stopped', data: { projectId: 'x' } }])
+  })
+
+  it('emits port-detected for added ports', () => {
+    const events: Array<{ type: string; data: unknown }> = []
+    broadcastDiff(
+      {
+        started: [],
+        stopped: [],
+        portsAdded: [{ projectId: 'a', port: 3001 }],
+        portsRemoved: [],
+      },
+      (e) => events.push(e),
+    )
+    expect(events).toEqual([{ type: 'port-detected', data: { projectId: 'a', port: 3001 } }])
+  })
+
+  it('emits nothing for empty diff', () => {
+    const events: Array<{ type: string; data: unknown }> = []
+    broadcastDiff({ started: [], stopped: [], portsAdded: [], portsRemoved: [] }, (e) =>
+      events.push(e),
+    )
+    expect(events).toEqual([])
+  })
+
+  it('emits events in order: started, stopped, port-detected', () => {
+    const events: Array<{ type: string; data: unknown }> = []
+    broadcastDiff(
+      {
+        started: ['new'],
+        stopped: ['old'],
+        portsAdded: [{ projectId: 'existing', port: 4000 }],
+        portsRemoved: [{ projectId: 'existing', port: 3000 }],
+      },
+      (e) => events.push(e),
+    )
+    expect(events.map((e) => e.type)).toEqual([
+      'process-started',
+      'process-stopped',
+      'port-detected',
+    ])
+  })
+})
+
+describe('BackgroundPoller onDiff callback', () => {
+  let poller: BackgroundPoller
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    poller = new BackgroundPoller()
+    mockDetect.mockReset().mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    poller.stop()
+    vi.useRealTimers()
+  })
+
+  it('calls onDiff when diff has changes', async () => {
+    const diffs: Array<unknown> = []
+    poller.setOnDiff((diff) => diffs.push(diff))
+
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(diffs).toHaveLength(1)
+    expect(diffs[0]).toEqual(expect.objectContaining({ started: ['a'] }))
+  })
+
+  it('does not call onDiff when diff is empty', async () => {
+    const diffs: Array<unknown> = []
+    poller.setOnDiff((diff) => diffs.push(diff))
+
+    mockDetect.mockResolvedValue({})
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(diffs).toHaveLength(0)
+  })
+
+  it('does not call onDiff when no callback is set', async () => {
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(poller.getLastDiff()).not.toBeNull()
   })
 })

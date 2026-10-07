@@ -47,12 +47,34 @@ export function diffListeners(previous: ListenerMap, current: ListenerMap): List
   return { started, stopped, portsAdded, portsRemoved }
 }
 
+export type DiffCallback = (diff: ListenerDiff) => void
+
+export function broadcastDiff(
+  diff: ListenerDiff,
+  emit: (event: { type: string; data: unknown }) => void,
+) {
+  for (const projectId of diff.started) {
+    emit({ type: 'process-started', data: { projectId } })
+  }
+  for (const projectId of diff.stopped) {
+    emit({ type: 'process-stopped', data: { projectId } })
+  }
+  for (const { projectId, port } of diff.portsAdded) {
+    emit({ type: 'port-detected', data: { projectId, port } })
+  }
+}
+
 export class BackgroundPoller {
   private interval: ReturnType<typeof setInterval> | null = null
   private tickCount = 0
   private tickRunning = false
   private previousListeners: ListenerMap = {}
   private lastDiff: ListenerDiff | null = null
+  private onDiff: DiffCallback | null = null
+
+  setOnDiff(callback: DiffCallback) {
+    this.onDiff = callback
+  }
 
   start(intervalMs = 5000) {
     if (this.interval) return
@@ -92,8 +114,18 @@ export class BackgroundPoller {
     try {
       this.tickCount++
       const current = await detectAllListeners()
-      this.lastDiff = diffListeners(this.previousListeners, current)
+      const diff = diffListeners(this.previousListeners, current)
+      this.lastDiff = diff
       this.previousListeners = current
+      if (
+        this.onDiff &&
+        (diff.started.length > 0 ||
+          diff.stopped.length > 0 ||
+          diff.portsAdded.length > 0 ||
+          diff.portsRemoved.length > 0)
+      ) {
+        this.onDiff(diff)
+      }
     } finally {
       this.tickRunning = false
     }
