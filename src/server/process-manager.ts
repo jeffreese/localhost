@@ -82,6 +82,7 @@ export async function startProject(
   devScript: string,
   onPortDetected?: (projectId: string, port: number) => void,
   onLogs?: (projectId: string, lines: LogLine[]) => void,
+  portOverride?: number,
 ): Promise<ChildProcess> {
   if (activeProcesses.has(projectId)) {
     throw new Error(`Project ${projectId} is already running`)
@@ -90,12 +91,20 @@ export async function startProject(
   // Fresh start = fresh console. Clear any retained buffer from a prior run.
   logBuffers.delete(projectId)
 
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    FORCE_COLOR: '1',
+  }
+  if (portOverride !== undefined) {
+    env.PORT = String(portOverride)
+  }
+
   const [cmd, args] = buildCommand(packageManager, devScript)
   const child = spawn(cmd, args, {
     cwd: projectPath,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
-    env: { ...process.env, FORCE_COLOR: '1' },
+    env,
   })
 
   activeProcesses.set(projectId, child)

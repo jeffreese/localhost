@@ -96,6 +96,7 @@ api.post('/projects/:id/start', async (c) => {
       (id, lines) => {
         broadcast({ type: 'log', data: { projectId: id, lines } })
       },
+      override?.port,
     )
     broadcast({ type: 'process-started', data: { projectId } })
     return c.json({ status: 'started', projectId })
