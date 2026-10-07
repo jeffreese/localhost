@@ -296,6 +296,34 @@ export async function detectAllListeners(): Promise<Record<string, Listener[]>> 
   return matchListenersToProjects(listeners, cwdByPid, projectPaths)
 }
 
+/**
+ * Remove dead or mismatched PIDs from config.pids on startup.
+ * Must run before the first background poll tick.
+ */
+export async function cleanupStalePids(): Promise<number> {
+  const config = await readConfig()
+  const entries = Object.entries(config.pids)
+  if (entries.length === 0) return 0
+
+  const staleIds: string[] = []
+  for (const [projectId, pid] of entries) {
+    const projectPath = config.projects[projectId]?.path
+    if (!projectPath || !(await verifyPid(pid, projectPath))) {
+      staleIds.push(projectId)
+    }
+  }
+
+  if (staleIds.length > 0) {
+    await updateConfig((c) => {
+      for (const id of staleIds) {
+        delete c.pids[id]
+      }
+    })
+  }
+
+  return staleIds.length
+}
+
 export function getActiveProcesses(): Map<string, ChildProcess> {
   return activeProcesses
 }
