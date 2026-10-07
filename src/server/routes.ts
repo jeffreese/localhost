@@ -88,6 +88,7 @@ api.post('/projects/:id/start', async (c) => {
   if (portOverride !== undefined) {
     const listenerMap = await detectAllListeners()
     for (const [ownerProjectId, listeners] of Object.entries(listenerMap)) {
+      if (ownerProjectId === projectId) continue
       for (const listener of listeners) {
         if (listener.port === portOverride) {
           return c.json(
