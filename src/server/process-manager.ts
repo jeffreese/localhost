@@ -251,10 +251,6 @@ export async function stopProject(projectId: string): Promise<void> {
 
     child.on('exit', () => {
       clearTimeout(timeout)
-      activeProcesses.delete(projectId)
-      updateConfig((c) => {
-        delete c.pids[projectId]
-      }).catch(() => {})
       resolve()
     })
 

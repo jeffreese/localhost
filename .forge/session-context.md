@@ -1,19 +1,22 @@
 # Session Context
 
 ## What's next
-- Task 3.5: Startup PID cleanup — iterate `config.pids` on server start, verify each with `verifyPid`, remove dead/stale.
-- Tasks 3.6-3.7 remain in Epic 3 (Process Group Lifecycle).
+- Task 3.7: Integration tests for process group lifecycle — group kill, PID verification, shutdown cleanup, stale PID pruning.
 
 ## Key constraints (carried forward)
 - `startProject` spawns with `detached: true`, `stdio: ['ignore', 'pipe', 'pipe']`. PGID = child PID via setsid().
-- `stopProject` sends group signals with PID verification: checks alive (`kill(pid, 0)`) and cwd match before signaling.
-- `verifyPid(pid, expectedPath)` exported from process-manager.ts — reuses `parseCwdOutput` from listener-scanner.ts.
-- Shutdown handlers in index.ts: SIGTERM/SIGINT → gracefulShutdown (SIGTERM all groups, 3s grace, SIGKILL survivors, exit). Exit handler does synchronous SIGKILL sweep.
-- `shuttingDown` guard prevents double invocation on rapid SIGINT+SIGTERM.
-- `getActiveProcesses()` returns the live Map — shutdown iterates it directly.
+- `stopProject` sends group signals with PID verification on stored-PID path. Active-child path skips verification (holds ChildProcess reference directly).
+- Single exit handler per child — registered in `startProject`, handles log flushing, activeProcesses cleanup, and config.pids removal. `stopProject` only adds timeout + resolve handler.
+- `verifyPid(pid, expectedPath)` exported from process-manager.ts — alive check + cwd match via lsof.
+- `cleanupStalePids()` exported from process-manager.ts — iterates config.pids on startup, removes stale entries.
+- Shutdown handlers in index.ts: SIGTERM/SIGINT → gracefulShutdown, exit → sync SIGKILL sweep.
+- Config store fully hardened (Epic 2): atomic writes, serialized queue, cached with structuredClone boundaries.
+
+## Judgment calls this session
+- Task 3.6 fix was minimal: removed duplicate cleanup (activeProcesses.delete + updateConfig) from stopProject's exit handler, leaving only clearTimeout + resolve. startProject's handler already covers cleanup.
 
 ## Watch for
-- Task 3.5 reuses `verifyPid` — iterate `config.pids`, verify each, remove stale on startup. Runs before the first background poll tick.
-- Task 3.6 (double exit handler) — stopProject registers a second `child.on('exit')` alongside startProject's. Don't fix before 3.6.
-- Task 5.5 depends on 3.4 — poller start/stop wired to server lifecycle.
-- The `mutable-cache-reference` pattern hit again in PR #21 (2nd occurrence). readConfig mock in process-manager tests now uses structuredClone. Watch for this in new test files.
+- Task 3.7: integration tests need to cover the single-exit-handler guarantee — verify updateConfig called exactly once on stop.
+- Fire-and-forget promises need `.catch()` — project rule (behavior-catch-fire-and-forget.md).
+- readConfig mocks must use structuredClone (behavior-cache-clone-boundaries.md).
+- EPERM vs ESRCH: cover both error codes as distinct test scenarios.

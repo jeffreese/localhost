@@ -476,6 +476,19 @@ describe('process-manager', () => {
       await stopPromise
     })
 
+    it('calls updateConfig exactly once on exit (no duplicate from stopProject)', async () => {
+      const { updateConfig: mockUpdateConfig } = await import('./config-store')
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+      ;(mockUpdateConfig as ReturnType<typeof vi.fn>).mockClear()
+      const stopPromise = stopProject('p1')
+      fakeChild.emit('exit', 0, null)
+      await stopPromise
+
+      expect(mockUpdateConfig).toHaveBeenCalledTimes(1)
+      killSpy.mockRestore()
+    })
+
     it('falls back to child.kill(SIGKILL) on escalation when pid is undefined', async () => {
       vi.useFakeTimers()
       fakeChild.pid = undefined as unknown as number
