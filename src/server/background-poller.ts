@@ -34,7 +34,7 @@ export class BackgroundPoller {
   }
 
   getPreviousListeners(): ListenerMap {
-    return this.previousListeners
+    return structuredClone(this.previousListeners)
   }
 
   private async tick() {

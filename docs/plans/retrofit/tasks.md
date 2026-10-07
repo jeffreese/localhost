@@ -49,7 +49,7 @@ date: 2026-10-05
 - [x] 5.1 Create `background-poller.ts`: 5s setInterval, async listener enumeration + project matching.
 - [ ] 5.2 Implement listener diff logic: compare current vs previous, identify new/removed/changed.
 - [ ] 5.3 Wire diff to SSE broadcasts: `process-started`, `process-stopped`, `port-detected`.
-- [ ] 5.4 Add overlap guard: skip tick if previous still running.
+- [x] 5.4 Add overlap guard: skip tick if previous still running.
 - [ ] 5.5 Start poller on server startup, stop on shutdown.
 - [ ] 5.6 Add event IDs to SSE broadcaster (monotonic counter).
 - [ ] 5.7 Write tests: diff logic, SSE broadcast verification, overlap guard.
