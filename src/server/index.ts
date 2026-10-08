@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { BackgroundPoller, broadcastDiff } from './background-poller'
+import { closeAll as closeAllLogs } from './log-store'
 import { cleanupStalePids, getActiveProcesses } from './process-manager'
 import api from './routes'
 import { broadcast } from './sse'
@@ -36,6 +37,7 @@ async function gracefulShutdown() {
   shuttingDown = true
 
   poller.stop()
+  await closeAllLogs()
   killAllProcessGroups('SIGTERM')
 
   await new Promise((resolve) => setTimeout(resolve, 3000))

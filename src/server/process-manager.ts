@@ -2,6 +2,7 @@ import { type ChildProcess, execFile, spawn } from 'node:child_process'
 import type { Listener, LogLine, PackageManager } from '@shared/types'
 import { readConfig, updateConfig } from './config-store'
 import { enumerateListeners, matchListenersToProjects, parseCwdOutput } from './listener-scanner'
+import { appendLines as appendToLogFile, closeLogs } from './log-store'
 
 const activeProcesses = new Map<string, ChildProcess>()
 
@@ -148,6 +149,9 @@ export async function startProject(
 
     if (newLines.length > 0) {
       appendLogLines(projectId, newLines)
+      appendToLogFile(projectId, newLines).catch((err) =>
+        console.error(`Log file write failed for ${projectId}:`, err),
+      )
       pendingBatch.push(...newLines)
       scheduleBatchFlush()
     }
@@ -181,6 +185,19 @@ export async function startProject(
       pendingBatch.push(...tailLines)
     }
     flushBatch()
+
+    const closeLogFile = () =>
+      closeLogs(projectId).catch((err) =>
+        console.error(`Log file close failed for ${projectId}:`, err),
+      )
+
+    if (tailLines.length > 0) {
+      appendToLogFile(projectId, tailLines)
+        .catch((err) => console.error(`Log file write failed for ${projectId}:`, err))
+        .finally(closeLogFile)
+    } else {
+      closeLogFile()
+    }
 
     activeProcesses.delete(projectId)
     updateConfig((config) => {
