@@ -53,6 +53,7 @@ export class LhPortTable extends LitElement {
                           target="_blank"
                           rel="noopener"
                           class="text-accent hover:underline"
+                          aria-label="Open localhost port ${e.port}"
                         >:${e.port}</a>`
                   }</td>
                   <td class="py-xs text-secondary text-xs">${e.portType ?? '—'}</td>
