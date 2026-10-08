@@ -5,19 +5,16 @@ import { HealthChecker } from './health-checker'
 import { closeAll as closeAllLogs } from './log-store'
 import { getPortType } from './port-probe'
 import { cleanupStalePids, getActiveProcesses } from './process-manager'
-import api from './routes'
+import { createApi } from './routes'
 import { broadcast } from './sse'
 
 const app = new Hono()
 
-app.get('/api/health', (c) => c.json({ status: 'ok' }))
-app.route('/api', api)
-
 export const port = 7769
 
 const poller = new BackgroundPoller()
-/** Exported for SSE broadcast wiring (task 9.3) and health API endpoint (task 9.4). */
 const healthChecker = new HealthChecker()
+app.route('/api', createApi(healthChecker))
 
 healthChecker.setOnChange((projectId, status, responseTime) => {
   broadcast({ type: 'health-changed', data: { projectId, status, responseTime } })

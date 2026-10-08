@@ -58,6 +58,22 @@ vi.mock('./sse', () => ({
   handleSSE: vi.fn(),
 }))
 
+const { mockGetAllStatuses } = vi.hoisted(() => {
+  const mockGetAllStatuses = vi.fn().mockReturnValue({})
+  return { mockGetAllStatuses }
+})
+vi.mock('./health-checker', () => ({
+  HealthChecker: vi.fn().mockReturnValue({
+    startChecking: vi.fn(),
+    stopChecking: vi.fn(),
+    stopAll: vi.fn(),
+    isChecking: vi.fn().mockReturnValue(false),
+    setOnChange: vi.fn(),
+    getStatus: vi.fn().mockReturnValue(null),
+    getAllStatuses: mockGetAllStatuses,
+  }),
+}))
+
 const { default: app } = await import('./index')
 const { startProject } = await import('./process-manager')
 const { clearPortTypeCache, setPortType } = await import('./port-probe')
@@ -326,5 +342,85 @@ describe('routes', () => {
     }>
     const project = body[0]
     expect(project.listeners[0].portType).toBeUndefined()
+  })
+
+  describe('GET /api/health', () => {
+    it('returns empty statuses when no projects are being checked', async () => {
+      mockGetAllStatuses.mockReturnValue({})
+      const res = await app.request('/api/health')
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body).toEqual({ statuses: {} })
+    })
+
+    it('returns per-project health with ISO timestamps', async () => {
+      mockGetAllStatuses.mockReturnValue({
+        '/tmp/my-app': {
+          status: 'healthy',
+          consecutiveFailures: 0,
+          lastCheck: 1696780000000,
+          responseTime: 42,
+        },
+        '/tmp/other-app': {
+          status: 'unhealthy',
+          consecutiveFailures: 3,
+          lastCheck: 1696780001000,
+          responseTime: null,
+        },
+      })
+
+      const res = await app.request('/api/health')
+      expect(res.status).toBe(200)
+      const body = await res.json()
+
+      expect(body.statuses['/tmp/my-app']).toEqual({
+        status: 'healthy',
+        lastCheck: new Date(1696780000000).toISOString(),
+        responseTime: 42,
+        consecutiveFailures: 0,
+      })
+      expect(body.statuses['/tmp/other-app']).toEqual({
+        status: 'unhealthy',
+        lastCheck: new Date(1696780001000).toISOString(),
+        consecutiveFailures: 3,
+      })
+    })
+
+    it('returns null lastCheck for projects that have not been probed yet', async () => {
+      mockGetAllStatuses.mockReturnValue({
+        '/tmp/new-app': {
+          status: 'unknown',
+          consecutiveFailures: 0,
+          lastCheck: null,
+          responseTime: null,
+        },
+      })
+
+      const res = await app.request('/api/health')
+      expect(res.status).toBe(200)
+      const body = await res.json()
+
+      expect(body.statuses['/tmp/new-app']).toEqual({
+        status: 'unknown',
+        lastCheck: null,
+        consecutiveFailures: 0,
+      })
+    })
+
+    it('omits responseTime when null', async () => {
+      mockGetAllStatuses.mockReturnValue({
+        '/tmp/app': {
+          status: 'unhealthy',
+          consecutiveFailures: 5,
+          lastCheck: 1696780000000,
+          responseTime: null,
+        },
+      })
+
+      const res = await app.request('/api/health')
+      const body = await res.json()
+
+      expect(body.statuses['/tmp/app']).not.toHaveProperty('responseTime')
+    })
   })
 })
