@@ -27,8 +27,15 @@ vi.mock('node:fs/promises', async () => {
   }
 })
 
-const { appendLines, rotateIfNeeded, closeLogs, closeAll, LOG_DIR, __resetLogStore, __setHandle } =
-  await import('./log-store')
+const {
+  appendLines,
+  __rotateIfNeeded: rotateIfNeeded,
+  closeLogs,
+  closeAll,
+  LOG_DIR,
+  __resetLogStore,
+  __setHandle,
+} = await import('./log-store')
 
 const logsDir = join(testHome, '.localhost', 'logs')
 
@@ -130,6 +137,23 @@ describe('log-store', () => {
     expect(existsSync(join(logsDir, 'no-rotate.log.1'))).toBe(false)
     const content = readFileSync(join(logsDir, 'no-rotate.log'), 'utf-8')
     expect(content).toContain('small')
+  })
+
+  it('serializes concurrent appendLines calls to prevent double rotation', async () => {
+    const big: LogLine[] = [{ stream: 'stdout', ts: 1000, text: 'x'.repeat(100) }]
+    await appendLines('concurrent', big, 200)
+
+    const a: LogLine[] = [{ stream: 'stdout', ts: 2000, text: 'aaa' }]
+    const b: LogLine[] = [{ stream: 'stdout', ts: 3000, text: 'bbb' }]
+    await Promise.all([appendLines('concurrent', a, 50), appendLines('concurrent', b, 50)])
+    await closeLogs('concurrent')
+
+    const rotated = readFileSync(join(logsDir, 'concurrent.log.1'), 'utf-8')
+    const current = readFileSync(join(logsDir, 'concurrent.log'), 'utf-8')
+
+    expect(rotated).toContain('x'.repeat(100))
+    expect(current).toContain('aaa')
+    expect(current).toContain('bbb')
   })
 
   describe('rotateIfNeeded', () => {
