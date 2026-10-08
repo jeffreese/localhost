@@ -364,6 +364,46 @@ describe('process-manager', () => {
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
       expect(() => fakeChild.emit('exit', 1, null)).not.toThrow()
     })
+
+    it('stores crash info in config on unexpected exit', async () => {
+      __resetStoppingProjects()
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+      fakeChild.emit('exit', 1, 'SIGTERM')
+
+      await vi.waitFor(() => {
+        expect(storedConfig.crashes.p1).toEqual({
+          timestamp: expect.any(String),
+          exitCode: 1,
+          signal: 'SIGTERM',
+        })
+      })
+    })
+
+    it('does not store crash info on user-initiated stop', async () => {
+      __resetStoppingProjects()
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+
+      const stopPromise = stopProject('p1')
+      fakeChild.emit('exit', 0, null)
+      await stopPromise
+
+      await vi.waitFor(() => {
+        expect(storedConfig.pids.p1).toBeUndefined()
+      })
+      expect(storedConfig.crashes.p1).toBeUndefined()
+    })
+
+    it('clears crash info on next start', async () => {
+      storedConfig.crashes.p1 = {
+        timestamp: '2026-10-07T00:00:00Z',
+        exitCode: 1,
+        signal: null,
+      }
+      __resetStoppingProjects()
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+
+      expect(storedConfig.crashes.p1).toBeUndefined()
+    })
   })
 
   describe('ring buffer', () => {

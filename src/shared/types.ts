@@ -30,6 +30,7 @@ export interface Project {
   processState: ProcessState
   /** True when Localhost started this process in the current session (log buffer exists). */
   spawnedByUs: boolean
+  crashInfo: CrashInfo | null
 }
 
 /** A single captured line of process output. */

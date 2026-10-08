@@ -36,6 +36,7 @@ function buildProjectResponse(
     listeners: enrichedListeners,
     processState: listeners.length > 0 ? 'running' : 'stopped',
     spawnedByUs: hasLogs(id),
+    crashInfo: config.crashes[id] ?? null,
   }
 }
 

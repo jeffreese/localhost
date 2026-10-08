@@ -133,6 +133,7 @@ export async function startProject(
     const pid = child.pid
     await updateConfig((config) => {
       config.pids[projectId] = pid
+      delete config.crashes[projectId]
     })
   }
 
@@ -218,18 +219,28 @@ export async function startProject(
       closeLogFile()
     }
 
-    if (!isStopping(projectId) && onCrash) {
+    const crashed = !isStopping(projectId)
+    const crashTimestamp = new Date().toISOString()
+
+    if (crashed && onCrash) {
       onCrash({
         projectId,
         exitCode: code,
         signal: signal ?? null,
-        timestamp: new Date().toISOString(),
+        timestamp: crashTimestamp,
       })
     }
 
     activeProcesses.delete(projectId)
     updateConfig((config) => {
       delete config.pids[projectId]
+      if (crashed) {
+        config.crashes[projectId] = {
+          timestamp: crashTimestamp,
+          exitCode: code,
+          signal: signal ?? null,
+        }
+      }
     }).catch(() => {})
   })
 
