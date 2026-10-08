@@ -111,8 +111,10 @@ export async function readLines(
   offset = 0,
 ): Promise<{ lines: LogLine[]; hasMore: boolean }> {
   validateProjectName(projectName)
-  const current = await readFileLines(logPath(projectName))
-  const rotated = await readFileLines(rotatedPath(projectName))
+  const [current, rotated] = await Promise.all([
+    readFileLines(logPath(projectName)),
+    readFileLines(rotatedPath(projectName)),
+  ])
   const all = [...rotated, ...current]
 
   const end = all.length - offset
