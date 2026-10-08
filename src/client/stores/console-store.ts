@@ -64,6 +64,7 @@ export const ConsoleStore = {
     // Hydrate from server before attaching to SSE deltas.
     try {
       const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/logs`)
+      if (!res.ok) throw new Error(`Log fetch failed: ${res.status}`)
       const { lines }: { lines: LogLine[] } = await res.json()
       logsByProject.set(projectId, lines)
     } catch {

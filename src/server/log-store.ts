@@ -11,19 +11,17 @@ const fileHandles = new Map<string, FileHandle>()
 
 const writeLocks = new Map<string, Promise<void>>()
 
-function validateProjectName(name: string): void {
-  if (name.includes('/') || name.includes('\\') || name.includes('..') || name.length === 0) {
-    throw new Error(`Invalid project name: ${name}`)
-  }
+function safeFilename(projectId: string): string {
+  if (projectId.length === 0) throw new Error('Empty project ID')
+  return projectId.replace(/[/\\]/g, '_').replace(/^\.+/, '')
 }
 
-function logPath(projectName: string): string {
-  validateProjectName(projectName)
-  return join(LOG_DIR, `${projectName}.log`)
+function logPath(projectId: string): string {
+  return join(LOG_DIR, `${safeFilename(projectId)}.log`)
 }
 
-function rotatedPath(projectName: string): string {
-  return join(LOG_DIR, `${projectName}.log.1`)
+function rotatedPath(projectId: string): string {
+  return join(LOG_DIR, `${safeFilename(projectId)}.log.1`)
 }
 
 async function getHandle(projectName: string): Promise<FileHandle> {
@@ -110,7 +108,6 @@ export async function readLines(
   limit = 500,
   offset = 0,
 ): Promise<{ lines: LogLine[]; hasMore: boolean }> {
-  validateProjectName(projectName)
   const [current, rotated] = await Promise.all([
     readFileLines(logPath(projectName)),
     readFileLines(rotatedPath(projectName)),

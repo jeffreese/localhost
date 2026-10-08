@@ -100,12 +100,17 @@ describe('log-store', () => {
     expect(content).toContain('second')
   })
 
-  it('rejects project names with path traversal characters', async () => {
+  it('rejects empty project ID', async () => {
     const lines: LogLine[] = [{ stream: 'stdout', ts: 1000, text: 'hi' }]
-    await expect(appendLines('../escape', lines)).rejects.toThrow('Invalid project name')
-    await expect(appendLines('foo/bar', lines)).rejects.toThrow('Invalid project name')
-    await expect(appendLines('foo\\bar', lines)).rejects.toThrow('Invalid project name')
-    await expect(appendLines('', lines)).rejects.toThrow('Invalid project name')
+    await expect(appendLines('', lines)).rejects.toThrow('Empty project ID')
+  })
+
+  it('sanitizes path-based project IDs into safe filenames', async () => {
+    const lines: LogLine[] = [{ stream: 'stdout', ts: 1000, text: 'hi' }]
+    await appendLines('/Users/jeff/Code/my-app', lines)
+    await closeLogs('/Users/jeff/Code/my-app')
+
+    expect(existsSync(join(logsDir, '_Users_jeff_Code_my-app.log'))).toBe(true)
   })
 
   it('skips write for empty lines array', async () => {
