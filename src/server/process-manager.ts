@@ -6,6 +6,20 @@ import { appendLines as appendToLogFile, closeLogs } from './log-store'
 
 const activeProcesses = new Map<string, ChildProcess>()
 
+const stoppingProjects = new Set<string>()
+
+export function markStopping(projectId: string): void {
+  stoppingProjects.add(projectId)
+}
+
+export function clearStopping(projectId: string): void {
+  stoppingProjects.delete(projectId)
+}
+
+export function isStopping(projectId: string): boolean {
+  return stoppingProjects.has(projectId)
+}
+
 /** Ring buffer of captured stdout/stderr lines per project. Retained across process exit so users can inspect why a process died. */
 const logBuffers = new Map<string, LogLine[]>()
 
@@ -237,17 +251,23 @@ export async function verifyPid(pid: number, expectedPath: string): Promise<bool
 }
 
 export async function stopProject(projectId: string): Promise<void> {
+  markStopping(projectId)
+
   const child = activeProcesses.get(projectId)
 
   if (!child) {
     const config = await readConfig()
     const pid = config.pids[projectId]
-    if (!pid) return
+    if (!pid) {
+      clearStopping(projectId)
+      return
+    }
     const projectPath = config.projects[projectId]?.path
     if (!projectPath || !(await verifyPid(pid, projectPath))) {
       await updateConfig((c) => {
         delete c.pids[projectId]
       })
+      clearStopping(projectId)
       return
     }
     try {
@@ -258,6 +278,7 @@ export async function stopProject(projectId: string): Promise<void> {
     await updateConfig((c) => {
       delete c.pids[projectId]
     })
+    // Stop flag cleared by the poller when it sees the project disappear
     return
   }
 
@@ -368,4 +389,9 @@ export function __resetLogBuffers(): void {
 /** Test-only: clear the active process map (does not kill anything). */
 export function __resetActiveProcesses(): void {
   activeProcesses.clear()
+}
+
+/** Test-only: clear all stop flags. */
+export function __resetStoppingProjects(): void {
+  stoppingProjects.clear()
 }

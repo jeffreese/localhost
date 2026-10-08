@@ -1,12 +1,13 @@
 import type { Listener, PortType } from '@shared/types'
 import { deletePortType, getPortType, probePort, setPortType } from './port-probe'
-import { detectAllListeners } from './process-manager'
+import { clearStopping, detectAllListeners, isStopping } from './process-manager'
 
 export type ListenerMap = Record<string, Listener[]>
 
 export interface ListenerDiff {
   started: string[]
   stopped: string[]
+  crashed: string[]
   portsAdded: Array<{ projectId: string; port: number }>
   portsRemoved: Array<{ projectId: string; port: number }>
 }
@@ -45,7 +46,7 @@ export function diffListeners(previous: ListenerMap, current: ListenerMap): List
     }
   }
 
-  return { started, stopped, portsAdded, portsRemoved }
+  return { started, stopped, crashed: [], portsAdded, portsRemoved }
 }
 
 export type DiffCallback = (diff: ListenerDiff) => void
@@ -53,6 +54,7 @@ export type DiffCallback = (diff: ListenerDiff) => void
 export type PollerEvent =
   | { type: 'process-started'; data: { projectId: string } }
   | { type: 'process-stopped'; data: { projectId: string } }
+  | { type: 'process-crashed'; data: { projectId: string } }
   | { type: 'port-detected'; data: { projectId: string; port: number; portType?: PortType } }
 
 export function broadcastDiff(diff: ListenerDiff, emit: (event: PollerEvent) => void) {
@@ -61,6 +63,9 @@ export function broadcastDiff(diff: ListenerDiff, emit: (event: PollerEvent) => 
   }
   for (const projectId of diff.stopped) {
     emit({ type: 'process-stopped', data: { projectId } })
+  }
+  for (const projectId of diff.crashed) {
+    emit({ type: 'process-crashed', data: { projectId } })
   }
   for (const { projectId, port } of diff.portsAdded) {
     emit({ type: 'port-detected', data: { projectId, port, portType: getPortType(port) } })
@@ -118,12 +123,24 @@ export class BackgroundPoller {
       const current = await detectAllListeners()
       const previous = this.previousListeners
       const diff = diffListeners(previous, current)
+
+      const userStopped: string[] = []
+      for (const projectId of diff.stopped) {
+        if (isStopping(projectId)) {
+          userStopped.push(projectId)
+          clearStopping(projectId)
+        } else {
+          diff.crashed.push(projectId)
+        }
+      }
+      diff.stopped = userStopped
+
       this.lastDiff = diff
       this.previousListeners = current
       for (const { port } of diff.portsRemoved) {
         deletePortType(port)
       }
-      for (const projectId of diff.stopped) {
+      for (const projectId of [...diff.stopped, ...diff.crashed]) {
         const prevListeners = previous[projectId]
         if (prevListeners) {
           for (const { port } of prevListeners) {
@@ -158,7 +175,10 @@ export class BackgroundPoller {
       }
 
       const hasChanges =
-        diff.started.length > 0 || diff.stopped.length > 0 || diff.portsAdded.length > 0
+        diff.started.length > 0 ||
+        diff.stopped.length > 0 ||
+        diff.crashed.length > 0 ||
+        diff.portsAdded.length > 0
       if (this.onDiff && hasChanges) {
         try {
           const result: unknown = this.onDiff(structuredClone(diff))

@@ -73,7 +73,7 @@ date: 2026-10-05
 
 ## Epic 8: Crash Detection & Notifications
 
-- [ ] 8.1 Add crash detection to poller diff: disappeared listener + no user stop = crash. Track stop flag.
+- [x] 8.1 Add crash detection to poller diff: disappeared listener + no user stop = crash. Track stop flag.
 - [ ] 8.2 Capture exit code/signal from child `exit` event for Localhost-spawned processes, broadcast `process-crashed`.
 - [ ] 8.3 Store crash info in `config.crashes[projectId]`. Clear on next start.
 - [ ] 8.4 Add `process-crashed` SSE event type.
