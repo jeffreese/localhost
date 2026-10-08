@@ -70,6 +70,7 @@ const {
   hasLogs,
   __resetLogBuffers,
   __resetActiveProcesses,
+  __resetStoppingProjects,
 } = await import('./process-manager')
 
 const { appendLines: mockAppendLines, closeLogs: mockCloseLogs } = await import('./log-store')
@@ -316,6 +317,52 @@ describe('process-manager', () => {
       } finally {
         if (savedPort !== undefined) process.env.PORT = savedPort
       }
+    })
+
+    it('calls onCrash with exit code and signal when process exits unexpectedly', async () => {
+      const onCrash = vi.fn()
+      __resetStoppingProjects()
+      await startProject('p1', '/tmp/p1', 'npm', 'dev', undefined, undefined, undefined, onCrash)
+      fakeChild.emit('exit', 1, null)
+
+      expect(onCrash).toHaveBeenCalledWith({
+        projectId: 'p1',
+        exitCode: 1,
+        signal: null,
+        timestamp: expect.any(String),
+      })
+    })
+
+    it('calls onCrash with signal when process is killed externally', async () => {
+      const onCrash = vi.fn()
+      __resetStoppingProjects()
+      await startProject('p1', '/tmp/p1', 'npm', 'dev', undefined, undefined, undefined, onCrash)
+      fakeChild.emit('exit', null, 'SIGKILL')
+
+      expect(onCrash).toHaveBeenCalledWith({
+        projectId: 'p1',
+        exitCode: null,
+        signal: 'SIGKILL',
+        timestamp: expect.any(String),
+      })
+    })
+
+    it('does not call onCrash when process is user-stopped', async () => {
+      const onCrash = vi.fn()
+      __resetStoppingProjects()
+      await startProject('p1', '/tmp/p1', 'npm', 'dev', undefined, undefined, undefined, onCrash)
+
+      const stopPromise = stopProject('p1')
+      fakeChild.emit('exit', 0, null)
+      await stopPromise
+
+      expect(onCrash).not.toHaveBeenCalled()
+    })
+
+    it('does not call onCrash when no callback is provided', async () => {
+      __resetStoppingProjects()
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+      expect(() => fakeChild.emit('exit', 1, null)).not.toThrow()
     })
   })
 

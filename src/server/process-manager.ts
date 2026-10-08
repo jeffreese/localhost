@@ -90,6 +90,13 @@ function buildCommand(packageManager: PackageManager, script: string): [string, 
   }
 }
 
+export interface CrashEvent {
+  projectId: string
+  exitCode: number | null
+  signal: string | null
+  timestamp: string
+}
+
 export async function startProject(
   projectId: string,
   projectPath: string,
@@ -98,6 +105,7 @@ export async function startProject(
   onPortDetected?: (projectId: string, port: number) => void,
   onLogs?: (projectId: string, lines: LogLine[]) => void,
   portOverride?: number,
+  onCrash?: (event: CrashEvent) => void,
 ): Promise<ChildProcess> {
   if (activeProcesses.has(projectId)) {
     throw new Error(`Project ${projectId} is already running`)
@@ -185,7 +193,7 @@ export async function startProject(
   child.stdout?.on('data', (d) => handleChunk('stdout', d))
   child.stderr?.on('data', (d) => handleChunk('stderr', d))
 
-  child.on('exit', () => {
+  child.on('exit', (code, signal) => {
     // Flush any partial-line tails so the final line isn't silently lost.
     const tailLines: LogLine[] = []
     for (const stream of ['stdout', 'stderr'] as const) {
@@ -211,6 +219,15 @@ export async function startProject(
         .finally(closeLogFile)
     } else {
       closeLogFile()
+    }
+
+    if (!isStopping(projectId) && onCrash) {
+      onCrash({
+        projectId,
+        exitCode: code,
+        signal: signal ?? null,
+        timestamp: new Date().toISOString(),
+      })
     }
 
     activeProcesses.delete(projectId)

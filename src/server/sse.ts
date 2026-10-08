@@ -6,7 +6,15 @@ export type SSEEvent =
   | { type: 'scan-complete'; data: unknown }
   | { type: 'process-started'; data: { projectId: string } }
   | { type: 'process-stopped'; data: { projectId: string } }
-  | { type: 'process-crashed'; data: { projectId: string } }
+  | {
+      type: 'process-crashed'
+      data: {
+        projectId: string
+        exitCode: number | null
+        signal: string | null
+        timestamp: string
+      }
+    }
   | { type: 'project-updated'; data: { projectId: string } }
   | { type: 'port-detected'; data: { projectId: string; port: number; portType?: PortType } }
   | { type: 'preferences-updated'; data: unknown }
