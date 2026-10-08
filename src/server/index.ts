@@ -1,7 +1,9 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { BackgroundPoller, broadcastDiff } from './background-poller'
+import { HealthChecker } from './health-checker'
 import { closeAll as closeAllLogs } from './log-store'
+import { getPortType } from './port-probe'
 import { cleanupStalePids, getActiveProcesses } from './process-manager'
 import api from './routes'
 import { broadcast } from './sse'
@@ -14,8 +16,30 @@ app.route('/api', api)
 export const port = 7769
 
 const poller = new BackgroundPoller()
-poller.setOnDiff((diff) => {
+const healthChecker = new HealthChecker()
+
+poller.setOnDiff((diff, currentListeners) => {
   broadcastDiff(diff, broadcast)
+
+  for (const projectId of diff.started) {
+    const listeners = currentListeners[projectId]
+    if (listeners) {
+      const httpPort = listeners.find((l) => getPortType(l.port) === 'http')?.port
+      if (httpPort) {
+        healthChecker.startChecking(projectId, httpPort)
+      }
+    }
+  }
+
+  for (const { projectId, port: addedPort } of diff.portsAdded) {
+    if (getPortType(addedPort) === 'http' && !healthChecker.isChecking(projectId)) {
+      healthChecker.startChecking(projectId, addedPort)
+    }
+  }
+
+  for (const projectId of [...diff.stopped, ...diff.crashed]) {
+    healthChecker.stopChecking(projectId)
+  }
 })
 
 function killAllProcessGroups(signal: NodeJS.Signals) {
@@ -37,6 +61,7 @@ async function gracefulShutdown() {
   shuttingDown = true
 
   poller.stop()
+  healthChecker.stopAll()
   await closeAllLogs()
   killAllProcessGroups('SIGTERM')
 
@@ -70,6 +95,6 @@ export function __resetShutdownState() {
   shuttingDown = false
 }
 
-export { gracefulShutdown, killAllProcessGroups, poller }
+export { gracefulShutdown, healthChecker, killAllProcessGroups, poller }
 
 export default app

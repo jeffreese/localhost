@@ -49,7 +49,7 @@ export function diffListeners(previous: ListenerMap, current: ListenerMap): List
   return { started, stopped, crashed: [], portsAdded, portsRemoved }
 }
 
-export type DiffCallback = (diff: ListenerDiff) => void
+export type DiffCallback = (diff: ListenerDiff, currentListeners: ListenerMap) => void
 
 export type PollerEvent =
   | { type: 'process-started'; data: { projectId: string } }
@@ -197,7 +197,7 @@ export class BackgroundPoller {
         diff.portsAdded.length > 0
       if (this.onDiff && hasChanges) {
         try {
-          const result: unknown = this.onDiff(structuredClone(diff))
+          const result: unknown = this.onDiff(structuredClone(diff), structuredClone(current))
           if (result && typeof (result as { catch?: unknown }).catch === 'function') {
             ;(result as Promise<unknown>).catch((err) => {
               console.error('[BackgroundPoller] onDiff error:', err)
