@@ -256,6 +256,10 @@ export function createApi(healthChecker: HealthChecker) {
     if (healthCheckIntervalChanged) {
       if (newInterval === 0) {
         healthChecker.stopChecking(projectId)
+        broadcast({
+          type: 'health-changed',
+          data: { projectId, status: null, responseTime: null },
+        })
       } else if (healthChecker.isChecking(projectId)) {
         const listenerMap = await detectAllListeners()
         const listeners = listenerMap[projectId]

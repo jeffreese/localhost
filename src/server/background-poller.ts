@@ -49,7 +49,10 @@ export function diffListeners(previous: ListenerMap, current: ListenerMap): List
   return { started, stopped, crashed: [], portsAdded, portsRemoved }
 }
 
-export type DiffCallback = (diff: ListenerDiff, currentListeners: ListenerMap) => void
+export type DiffCallback = (
+  diff: ListenerDiff,
+  currentListeners: ListenerMap,
+) => void | Promise<void>
 
 export type PollerEvent =
   | { type: 'process-started'; data: { projectId: string } }

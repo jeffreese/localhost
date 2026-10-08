@@ -474,7 +474,9 @@ describe('BackgroundPoller onDiff callback', () => {
 
   it('calls onDiff when diff has changes', async () => {
     const diffs: Array<unknown> = []
-    poller.setOnDiff((diff) => diffs.push(diff))
+    poller.setOnDiff((diff) => {
+      diffs.push(diff)
+    })
 
     mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
     poller.start(100)
@@ -486,7 +488,9 @@ describe('BackgroundPoller onDiff callback', () => {
 
   it('does not call onDiff when diff is empty', async () => {
     const diffs: Array<unknown> = []
-    poller.setOnDiff((diff) => diffs.push(diff))
+    poller.setOnDiff((diff) => {
+      diffs.push(diff)
+    })
 
     mockDetect.mockResolvedValue({})
     poller.start(100)
@@ -534,7 +538,7 @@ describe('BackgroundPoller onDiff callback', () => {
 
   it('catches async onDiff errors', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    poller.setOnDiff((() => Promise.reject(new Error('async boom'))) as () => void)
+    poller.setOnDiff(() => Promise.reject(new Error('async boom')))
 
     mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
     poller.start(100)
@@ -547,7 +551,9 @@ describe('BackgroundPoller onDiff callback', () => {
 
   it('calls onDiff for portsRemoved-only changes', async () => {
     const diffs: Array<unknown> = []
-    poller.setOnDiff((diff) => diffs.push(diff))
+    poller.setOnDiff((diff) => {
+      diffs.push(diff)
+    })
 
     mockDetect.mockResolvedValueOnce({
       a: [
@@ -572,7 +578,9 @@ describe('BackgroundPoller onDiff callback', () => {
 
   it('calls onDiff with crashed projects when stop flag is not set', async () => {
     const diffs: Array<unknown> = []
-    poller.setOnDiff((diff) => diffs.push(diff))
+    poller.setOnDiff((diff) => {
+      diffs.push(diff)
+    })
 
     mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
     poller.start(100)
@@ -588,7 +596,9 @@ describe('BackgroundPoller onDiff callback', () => {
 
   it('calls onDiff with stopped projects when stop flag is set', async () => {
     const diffs: Array<unknown> = []
-    poller.setOnDiff((diff) => diffs.push(diff))
+    poller.setOnDiff((diff) => {
+      diffs.push(diff)
+    })
 
     mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
     poller.start(100)

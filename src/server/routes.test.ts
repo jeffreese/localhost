@@ -77,6 +77,7 @@ vi.mock('./health-checker', () => ({
 const { default: app, healthChecker } = await import('./index')
 const { startProject } = await import('./process-manager')
 const { clearPortTypeCache, setPortType } = await import('./port-probe')
+const { broadcast } = await import('./sse')
 
 function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
   mockListenerMap = {}
@@ -477,8 +478,9 @@ describe('routes', () => {
       expect(mockConfig.overrides['/tmp/my-app']?.healthCheckInterval).toBe(10000)
     })
 
-    it('PATCH healthCheckInterval=0 stops health checking', async () => {
+    it('PATCH healthCheckInterval=0 stops health checking and broadcasts cleared status', async () => {
       vi.mocked(healthChecker.isChecking).mockReturnValue(true)
+      vi.mocked(broadcast).mockClear()
       const res = await app.request('/api/projects/%2Ftmp%2Fmy-app', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -486,6 +488,10 @@ describe('routes', () => {
       })
       expect(res.status).toBe(200)
       expect(healthChecker.stopChecking).toHaveBeenCalledWith('/tmp/my-app')
+      expect(broadcast).toHaveBeenCalledWith({
+        type: 'health-changed',
+        data: { projectId: '/tmp/my-app', status: null, responseTime: null },
+      })
     })
 
     it('PATCH healthCheckInterval restarts health checker with new interval', async () => {

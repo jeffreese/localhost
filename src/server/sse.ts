@@ -21,7 +21,7 @@ export type SSEEvent =
   | { type: 'log'; data: { projectId: string; lines: LogLine[] } }
   | {
       type: 'health-changed'
-      data: { projectId: string; status: HealthStatus; responseTime: number | null }
+      data: { projectId: string; status: HealthStatus | null; responseTime: number | null }
     }
 
 type SSEClient = {
