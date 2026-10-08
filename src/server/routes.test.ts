@@ -460,6 +460,15 @@ describe('routes', () => {
     })
   })
 
+  describe('GET /api/resources', () => {
+    it('returns empty usage when no resources sampled', async () => {
+      const res = await app.request('/api/resources')
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body).toEqual({ usage: {} })
+    })
+  })
+
   describe('healthCheckInterval override', () => {
     beforeEach(() => {
       resetConfig()

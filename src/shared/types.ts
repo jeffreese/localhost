@@ -35,6 +35,7 @@ export interface Project {
   spawnedByUs: boolean
   crashInfo: CrashInfo | null
   healthStatus: HealthStatus | null
+  resourceUsage: ResourceUsage | null
 }
 
 /** A single captured line of process output. */
@@ -79,6 +80,14 @@ export interface GroupConfig {
     collapsed: boolean
   }>
   assignments: Record<string, string>
+}
+
+/** Per-project resource usage from ps sampling */
+export interface ResourceUsage {
+  cpu: number
+  memory: number
+  pids: number[]
+  sampledAt: string
 }
 
 /** Crash info stored when a process exits unexpectedly */

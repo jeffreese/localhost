@@ -1,8 +1,76 @@
-import type { Listener, PortType } from '@shared/types'
+import { execFile } from 'node:child_process'
+import type { Listener, PortType, ResourceUsage } from '@shared/types'
 import { deletePortType, getPortType, probePort, setPortType } from './port-probe'
 import { clearStopping, detectAllListeners, isStopping } from './process-manager'
 
 export type ListenerMap = Record<string, Listener[]>
+export type ResourceMap = Record<string, ResourceUsage>
+
+interface PsEntry {
+  pid: number
+  cpu: number
+  rss: number
+}
+
+function execPsAsync(pids: number[]): Promise<string> {
+  return new Promise((resolve) => {
+    execFile(
+      'ps',
+      ['-o', 'pid,pcpu,rss', '-p', pids.join(',')],
+      { encoding: 'utf-8', timeout: 5000 },
+      (_err, stdout) => {
+        resolve(stdout ?? '')
+      },
+    )
+  })
+}
+
+export function parsePsOutput(output: string): PsEntry[] {
+  const lines = output.trim().split('\n')
+  const entries: PsEntry[] = []
+  for (let i = 1; i < lines.length; i++) {
+    const parts = lines[i].trim().split(/\s+/)
+    if (parts.length < 3) continue
+    const pid = Number.parseInt(parts[0], 10)
+    const cpu = Number.parseFloat(parts[1])
+    const rss = Number.parseInt(parts[2], 10)
+    if (Number.isNaN(pid) || Number.isNaN(cpu) || Number.isNaN(rss)) continue
+    entries.push({ pid, cpu, rss: rss * 1024 })
+  }
+  return entries
+}
+
+export function aggregateByProject(listeners: ListenerMap, psEntries: PsEntry[]): ResourceMap {
+  const pidLookup = new Map<number, PsEntry>()
+  for (const entry of psEntries) {
+    pidLookup.set(entry.pid, entry)
+  }
+
+  const result: ResourceMap = {}
+  const now = new Date().toISOString()
+
+  for (const [projectId, projectListeners] of Object.entries(listeners)) {
+    const pids = [...new Set(projectListeners.map((l) => l.pid))]
+    let cpu = 0
+    let memory = 0
+    let matched = false
+
+    for (const pid of pids) {
+      const entry = pidLookup.get(pid)
+      if (entry) {
+        cpu += entry.cpu
+        memory += entry.rss
+        matched = true
+      }
+    }
+
+    if (matched) {
+      result[projectId] = { cpu, memory, pids, sampledAt: now }
+    }
+  }
+
+  return result
+}
 
 export interface ListenerDiff {
   started: string[]
@@ -54,6 +122,8 @@ export type DiffCallback = (
   currentListeners: ListenerMap,
 ) => void | Promise<void>
 
+export type ResourceUpdateCallback = (resources: ResourceMap) => void | Promise<void>
+
 export type PollerEvent =
   | { type: 'process-started'; data: { projectId: string } }
   | { type: 'process-stopped'; data: { projectId: string } }
@@ -98,8 +168,18 @@ export class BackgroundPoller {
   private previousListeners: ListenerMap = {}
   private lastDiff: ListenerDiff | null = null
   private onDiff: DiffCallback | null = null
+  private resourceUsage: ResourceMap = {}
+  private onResourceUpdate: ResourceUpdateCallback | null = null
   setOnDiff(callback: DiffCallback) {
     this.onDiff = callback
+  }
+
+  setOnResourceUpdate(callback: ResourceUpdateCallback) {
+    this.onResourceUpdate = callback
+  }
+
+  getResourceUsage(): ResourceMap {
+    return structuredClone(this.resourceUsage)
   }
 
   start(intervalMs = 5000) {
@@ -211,8 +291,48 @@ export class BackgroundPoller {
           console.error('[BackgroundPoller] onDiff error:', err)
         }
       }
+
+      if (this.tickCount % 3 === 0) {
+        await this.sampleResources(current)
+      }
     } finally {
       this.tickRunning = false
+    }
+  }
+
+  private async sampleResources(currentListeners: ListenerMap) {
+    const allPids = new Set<number>()
+    for (const listeners of Object.values(currentListeners)) {
+      for (const { pid } of listeners) {
+        allPids.add(pid)
+      }
+    }
+
+    if (allPids.size === 0) {
+      this.resourceUsage = {}
+      return
+    }
+
+    try {
+      const output = await execPsAsync([...allPids])
+      const entries = parsePsOutput(output)
+      const resources = aggregateByProject(currentListeners, entries)
+      this.resourceUsage = resources
+
+      if (this.onResourceUpdate) {
+        try {
+          const result: unknown = this.onResourceUpdate(structuredClone(resources))
+          if (result && typeof (result as { catch?: unknown }).catch === 'function') {
+            ;(result as Promise<unknown>).catch((err) => {
+              console.error('[BackgroundPoller] onResourceUpdate error:', err)
+            })
+          }
+        } catch (err) {
+          console.error('[BackgroundPoller] onResourceUpdate error:', err)
+        }
+      }
+    } catch (err) {
+      console.error('[BackgroundPoller] resource sampling error:', err)
     }
   }
 }

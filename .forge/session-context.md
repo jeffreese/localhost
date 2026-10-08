@@ -1,24 +1,25 @@
 # Session Context
 
 ## What's next
-- Epic 9: Health Checks — task 9.6: Support per-project `healthCheckInterval` override (0 to disable)
-- This is the last task in Epic 9.
+- Epic 10 (Resource Monitoring) complete. Next: Epic 11 (Project Groups) or Epic 12 (Project Type Registry).
+- Check backlog and retrofit tasks to pick the next epic.
 
 ## Key constraints (carried forward)
-- Health checker core complete (9.1-9.3): HealthChecker class, poller lifecycle wiring, SSE health-changed event.
-- Health API endpoint complete (9.4): `GET /api/health` returns per-project statuses. Routes use `createApi(healthChecker)` factory pattern.
-- Health indicator complete (9.5): `healthStatus` field on Project type, `buildProjectResponse` populates from healthChecker, ProjectStore handles `health-changed` SSE events, card renders colored dot with ARIA label.
+- Routes use `createApi(healthChecker, poller)` factory pattern — `buildProjectResponse` inside the closure now uses both for healthStatus and resourceUsage.
+- `ResourceGetter` interface decouples routes from the full `BackgroundPoller` class.
+- Resource sampling runs every 3rd tick (15s) inside the background poller. `execPsAsync` calls `ps -o pid,pcpu,rss -p <pids>`.
+- RSS from `ps` is in KB — `parsePsOutput` converts to bytes (× 1024).
+- `onResourceUpdate` callback follows the same async-safe pattern as `onDiff` (duck-type `.catch` check).
 - Fire-and-forget promises need `.catch()` — project rule.
-- Consumer update on shape change — project rule. 4+ occurrences.
+- Consumer update on shape change — project rule. The SSE handler checklist is in recall (7 occurrences now with resourceUsage).
 
 ## Judgment calls from this session
-- Routes refactored to `createApi(healthChecker)` factory (task 9.4) — broke circular import cleanly.
-- `healthStatus` on Project type is `HealthStatus | null` — null when not running. Spec says `null if not running`.
-- Health dot uses `role="img"` + `aria-label` for accessibility. Colors: success (healthy), danger (unhealthy), warning (unknown).
-- `buildProjectResponse` moved inside `createApi` closure to access `healthChecker.getStatus()`.
-- Process-stopped SSE handler clears `healthStatus` to null.
+- Implemented all 5 Epic 10 tasks in one branch since they're tightly coupled (sampling → aggregation → SSE → API → UI).
+- Aggregation (10.2) was implemented alongside sampling (10.1) since the sampling data needs aggregation to be useful. Marked both.
+- `resourceUsage` field added to `Project` type — required updating all SSE handlers per the consumer-update checklist (handleProcessStarted, handleProcessStopped, handleProcessCrashed all clear resourceUsage to null).
+- The `resource-update` SSE event carries only `cpu` and `memory` (not `pids` or `sampledAt`) since those are display-oriented. The full `ResourceUsage` shape is on the API response.
 
 ## Watch for
-- Task 9.6 adds per-project interval override. This likely means adding a `healthCheckInterval` field to config overrides, a new API endpoint or extending PATCH /api/projects/:id, and passing the interval to `healthChecker.startChecking()`.
-- The `startChecking` method already accepts `intervalMs` as third param (default 30s). The plumbing is ready.
-- Config schema change → backward-compatible defaults in `readConfig`.
+- Epic 11 (Project Groups) will need a new SSE event type (`groups-changed`) and UI component updates.
+- Any new field on `Project` type: run the consumer-update checklist from recall before submitting.
+- The `node:child_process` mock is now needed in `background-poller.test.ts` and `index.test.ts` since `background-poller.ts` imports `execFile` directly.

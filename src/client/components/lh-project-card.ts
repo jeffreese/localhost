@@ -61,6 +61,13 @@ export class LhProjectCard extends LitElement {
     }
   }
 
+  private formatMemory(bytes: number): string {
+    if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)}G`
+    if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(0)}M`
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)}K`
+    return `${bytes}B`
+  }
+
   private formatCrashInfo(): string {
     const crash = this.project.crashInfo
     if (!crash) return ''
@@ -172,6 +179,11 @@ export class LhProjectCard extends LitElement {
               : ''
           }
           ${p.devScript ? html`<span class="text-muted">· ${p.devScript}</span>` : ''}
+          ${
+            p.resourceUsage
+              ? html`<span class="text-muted">· ${p.resourceUsage.cpu.toFixed(1)}% · ${this.formatMemory(p.resourceUsage.memory)}</span>`
+              : ''
+          }
         </div>
 
         <!-- Actions -->

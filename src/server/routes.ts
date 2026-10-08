@@ -1,4 +1,11 @@
-import type { Listener, LocalhostConfig, Project, ProjectCache, Visibility } from '@shared/types'
+import type {
+  Listener,
+  LocalhostConfig,
+  Project,
+  ProjectCache,
+  ResourceUsage,
+  Visibility,
+} from '@shared/types'
 import { Hono } from 'hono'
 import { readConfig, updateConfig } from './config-store'
 import type { HealthChecker } from './health-checker'
@@ -15,7 +22,11 @@ import {
 import { scanAndPersist } from './scanner'
 import { broadcast, handleSSE } from './sse'
 
-export function createApi(healthChecker: HealthChecker) {
+export interface ResourceGetter {
+  getResourceUsage(): Record<string, ResourceUsage>
+}
+
+export function createApi(healthChecker: HealthChecker, resourceGetter?: ResourceGetter) {
   function buildProjectResponse(
     id: string,
     cached: ProjectCache,
@@ -41,6 +52,7 @@ export function createApi(healthChecker: HealthChecker) {
       spawnedByUs: hasLogs(id),
       crashInfo: config.crashes[id] ?? null,
       healthStatus: isRunning ? (healthChecker.getStatus(id)?.status ?? null) : null,
+      resourceUsage: isRunning ? (resourceGetter?.getResourceUsage()[id] ?? null) : null,
     }
   }
   const api = new Hono()
@@ -66,6 +78,12 @@ export function createApi(healthChecker: HealthChecker) {
       }
     }
     return c.json({ statuses })
+  })
+
+  // GET /api/resources — resource usage for all running projects
+  api.get('/resources', (c) => {
+    const usage = resourceGetter?.getResourceUsage() ?? {}
+    return c.json({ usage })
   })
 
   // GET /api/projects — list all projects with current state
