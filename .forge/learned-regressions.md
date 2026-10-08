@@ -24,7 +24,7 @@ Bug patterns discovered during development. The `/crucible:review` agent checks 
 **Fix:** Un-export functions that became internal implementation details, or clearly document that the behavior is now automatic.
 
 ## api-shape-change-missing-consumer-update
-**Occurrences:** 3 (PR #40, PR #44, PR #47)
+**Occurrences:** 4 (PR #40, PR #44, PR #47, PR #53)
 **Pattern:** Changing a server API response shape (e.g., LogLine[] → {lines, hasMore}) without updating all client consumers. Mocked tests pass because the mock returns the old shape; the real response shape mismatch only surfaces at runtime. Destructuring the wrong shape yields undefined, which propagates silently.
 **Fix:** When changing an API response shape, grep for all fetch/import consumers of that endpoint. Update mocks to return the new shape. Add an integration-style test that uses the real (unmocked) endpoint if possible.
 **Status:** promoted to rule (behavior-consumer-update-on-shape-change.md)

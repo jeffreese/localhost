@@ -1,4 +1,4 @@
-import type { LogLine, PortType } from '@shared/types'
+import type { HealthStatus, LogLine, PortType } from '@shared/types'
 import type { Context } from 'hono'
 import { streamSSE } from 'hono/streaming'
 
@@ -19,6 +19,10 @@ export type SSEEvent =
   | { type: 'port-detected'; data: { projectId: string; port: number; portType?: PortType } }
   | { type: 'preferences-updated'; data: unknown }
   | { type: 'log'; data: { projectId: string; lines: LogLine[] } }
+  | {
+      type: 'health-changed'
+      data: { projectId: string; status: HealthStatus; responseTime: number | null }
+    }
 
 type SSEClient = {
   send: (event: SSEEvent, id: number) => void

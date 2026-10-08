@@ -39,3 +39,8 @@
 **Friction:** Crucible required 3 rounds — R1: port change not handled (portsRemoved didn't stop health checker), missing portsAdded test, undocumented export. R2: poller hasChanges gate excluded portsRemoved (onDiff never fires for port-only-removed ticks), port-change test only verified stop half.
 **Root cause:** Added a portsRemoved consumer in onDiff without checking that the poller's hasChanges gate actually delivers portsRemoved-only events — a pre-existing gap made material by the new consumer. Port-change test used a mock that didn't simulate real stopChecking behavior (clearing isChecking state), so the restart assertion was silently skipped.
 **Category:** crucible-rework
+
+## 2026-10-08 — feat/health-changed-sse
+**Friction:** Crucible required 2 rounds — R1: SSE client relay missing health-changed addEventListener (api-shape-change-missing-consumer-update, 4th occurrence).
+**Root cause:** Added server-side SSE event type and broadcast wiring but didn't grep for client SSE consumers. The sse-client.ts uses explicit addEventListener per type, so new events need manual registration. Same pattern as PRs #40, #44, #47.
+**Category:** crucible-rework

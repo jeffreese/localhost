@@ -27,6 +27,7 @@ export function connect(url = '/api/events'): void {
     emit('preferences-updated', JSON.parse(e.data)),
   )
   eventSource.addEventListener('log', (e) => emit('log', JSON.parse(e.data)))
+  eventSource.addEventListener('health-changed', (e) => emit('health-changed', JSON.parse(e.data)))
 
   eventSource.onerror = () => {
     eventSource?.close()
