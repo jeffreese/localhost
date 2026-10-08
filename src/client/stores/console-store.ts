@@ -6,6 +6,9 @@ type Listener = () => void
 const listeners = new Set<Listener>()
 const logsByProject = new Map<string, LogLine[]>()
 let openProjectId: string | null = null
+let hydrationBuffer: LogLine[] | null = null
+let hydrationProjectId: string | null = null
+let hydrationHistoryInvalidated = false
 
 const MAX_LINES = 500
 
@@ -15,19 +18,27 @@ function notify() {
   }
 }
 
+function truncate(lines: LogLine[]): LogLine[] {
+  if (lines.length > MAX_LINES) {
+    return lines.slice(lines.length - MAX_LINES)
+  }
+  return lines
+}
+
 function appendLines(projectId: string, lines: LogLine[]) {
   const existing = logsByProject.get(projectId) ?? []
-  const merged = existing.concat(lines)
-  if (merged.length > MAX_LINES) {
-    merged.splice(0, merged.length - MAX_LINES)
-  }
-  logsByProject.set(projectId, merged)
+  logsByProject.set(projectId, truncate(existing.concat(lines)))
 }
 
 function handleLogEvent(data: unknown) {
   const { projectId, lines } = data as { projectId: string; lines: LogLine[] }
+
+  if (hydrationBuffer !== null && projectId === hydrationProjectId) {
+    hydrationBuffer.push(...lines)
+    return
+  }
+
   if (!logsByProject.has(projectId)) {
-    // Drawer hasn't hydrated yet; skip so we don't duplicate what the fetch will return.
     return
   }
   appendLines(projectId, lines)
@@ -36,7 +47,13 @@ function handleLogEvent(data: unknown) {
 
 function handleProcessStarted(data: unknown) {
   const { projectId } = data as { projectId: string }
-  // A fresh run clears the retained buffer server-side; mirror that on the client.
+
+  if (hydrationBuffer !== null && projectId === hydrationProjectId) {
+    hydrationBuffer.length = 0
+    hydrationHistoryInvalidated = true
+    return
+  }
+
   if (logsByProject.has(projectId)) {
     logsByProject.set(projectId, [])
     notify()
@@ -61,15 +78,44 @@ export const ConsoleStore = {
 
   async open(projectId: string) {
     openProjectId = projectId
-    // Hydrate from server before attaching to SSE deltas.
+
+    hydrationBuffer = []
+    hydrationProjectId = projectId
+    hydrationHistoryInvalidated = false
+
+    let history: LogLine[] = []
     try {
       const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/logs`)
       if (!res.ok) throw new Error(`Log fetch failed: ${res.status}`)
-      const { lines }: { lines: LogLine[] } = await res.json()
-      logsByProject.set(projectId, lines)
+      const data: { lines: LogLine[] } = await res.json()
+      history = data.lines
     } catch {
-      logsByProject.set(projectId, [])
+      // Fetch failed — start with empty history; buffered SSE events still apply.
     }
+
+    if (openProjectId !== projectId) {
+      if (hydrationProjectId === projectId) {
+        hydrationBuffer = null
+        hydrationProjectId = null
+        hydrationHistoryInvalidated = false
+      }
+      return
+    }
+
+    if (hydrationBuffer === null) {
+      return
+    }
+
+    if (hydrationHistoryInvalidated) {
+      history = []
+      hydrationHistoryInvalidated = false
+    }
+
+    const merged = truncate(history.concat(hydrationBuffer))
+    hydrationBuffer = null
+    hydrationProjectId = null
+
+    logsByProject.set(projectId, merged)
     notify()
   },
 
@@ -94,6 +140,9 @@ export const ConsoleStore = {
   __reset() {
     logsByProject.clear()
     openProjectId = null
+    hydrationBuffer = null
+    hydrationProjectId = null
+    hydrationHistoryInvalidated = false
     listeners.clear()
   },
 }

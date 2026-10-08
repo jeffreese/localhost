@@ -60,7 +60,7 @@ date: 2026-10-05
 - [x] 6.2 Wire process-manager stdout/stderr to both ring buffer and log-store.
 - [x] 6.3 Implement size-based rotation: 10MB default, keep `.log` + `.log.1`.
 - [x] 6.4 Update `GET /api/projects/:id/logs` to read from disk with pagination.
-- [ ] 6.5 Fix console store hydration race: buffer SSE events during fetch, merge after.
+- [x] 6.5 Fix console store hydration race: buffer SSE events during fetch, merge after.
 - [ ] 6.6 Write tests: file writing, rotation, pagination, hydration race fix.
 
 ## Epic 7: Port Type Detection

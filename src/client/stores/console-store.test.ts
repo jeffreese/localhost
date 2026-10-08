@@ -160,4 +160,182 @@ describe('ConsoleStore', () => {
 
     expect(ConsoleStore.getLines('err-proj')).toEqual([])
   })
+
+  describe('hydration race fix', () => {
+    function deferredFetch(data: { lines: LogLine[] }) {
+      let resolve!: () => void
+      const fetchPromise = new Promise<void>((r) => {
+        resolve = r
+      })
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() =>
+          fetchPromise.then(() => ({
+            ok: true,
+            json: async () => data,
+          })),
+        ),
+      )
+      return resolve
+    }
+
+    it('buffers SSE events during fetch and merges after', async () => {
+      const resolve = deferredFetch({ lines: [line('disk-1'), line('disk-2')] })
+
+      const openPromise = ConsoleStore.open('p1')
+
+      dispatchSSE('log', { projectId: 'p1', lines: [line('live-1')] })
+      dispatchSSE('log', { projectId: 'p1', lines: [line('live-2')] })
+
+      resolve()
+      await openPromise
+
+      expect(ConsoleStore.getLines('p1').map((l) => l.text)).toEqual([
+        'disk-1',
+        'disk-2',
+        'live-1',
+        'live-2',
+      ])
+    })
+
+    it('process-started during hydration discards stale history', async () => {
+      const resolve = deferredFetch({ lines: [line('old-run-output')] })
+
+      const openPromise = ConsoleStore.open('p1')
+
+      dispatchSSE('process-started', { projectId: 'p1' })
+      dispatchSSE('log', { projectId: 'p1', lines: [line('new-run-line')] })
+
+      resolve()
+      await openPromise
+
+      expect(ConsoleStore.getLines('p1').map((l) => l.text)).toEqual(['new-run-line'])
+    })
+
+    it('superseded open() discards stale result without corrupting second open', async () => {
+      let resolveFirst!: () => void
+      let resolveSecond!: () => void
+      const firstFetch = new Promise<void>((r) => {
+        resolveFirst = r
+      })
+      const secondFetch = new Promise<void>((r) => {
+        resolveSecond = r
+      })
+
+      let callCount = 0
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => {
+          callCount++
+          const p = callCount === 1 ? firstFetch : secondFetch
+          const data = callCount === 1 ? { lines: [line('p1-data')] } : { lines: [line('p2-data')] }
+          return p.then(() => ({ ok: true, json: async () => data }))
+        }),
+      )
+
+      const open1 = ConsoleStore.open('p1')
+      const open2 = ConsoleStore.open('p2')
+
+      dispatchSSE('log', { projectId: 'p2', lines: [line('p2-live')] })
+
+      resolveFirst()
+      await open1
+
+      expect(ConsoleStore.getLines('p1')).toEqual([])
+
+      resolveSecond()
+      await open2
+
+      expect(ConsoleStore.getLines('p2').map((l) => l.text)).toEqual(['p2-data', 'p2-live'])
+    })
+
+    it('fetch failure still applies buffered SSE events', async () => {
+      let resolve!: () => void
+      const fetchPromise = new Promise<void>((r) => {
+        resolve = r
+      })
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => fetchPromise.then(() => ({ ok: false, status: 500 }))),
+      )
+
+      const openPromise = ConsoleStore.open('p1')
+
+      dispatchSSE('log', { projectId: 'p1', lines: [line('buffered-1')] })
+
+      resolve()
+      await openPromise
+
+      expect(ConsoleStore.getLines('p1').map((l) => l.text)).toEqual(['buffered-1'])
+    })
+
+    it('truncates merged result to MAX_LINES', async () => {
+      const history = Array.from({ length: 480 }, (_, i) => line(`h-${i}`))
+      const resolve = deferredFetch({ lines: history })
+
+      const openPromise = ConsoleStore.open('p1')
+
+      const liveLines = Array.from({ length: 40 }, (_, i) => line(`l-${i}`))
+      dispatchSSE('log', { projectId: 'p1', lines: liveLines })
+
+      resolve()
+      await openPromise
+
+      const result = ConsoleStore.getLines('p1')
+      expect(result).toHaveLength(500)
+      expect(result[0].text).toBe('h-20')
+      expect(result[result.length - 1].text).toBe('l-39')
+    })
+
+    it('same-project double-open does not corrupt buffer', async () => {
+      let resolveFirst!: () => void
+      let resolveSecond!: () => void
+      const firstFetch = new Promise<void>((r) => {
+        resolveFirst = r
+      })
+      const secondFetch = new Promise<void>((r) => {
+        resolveSecond = r
+      })
+
+      let callCount = 0
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => {
+          callCount++
+          const p = callCount === 1 ? firstFetch : secondFetch
+          const data = callCount === 1 ? { lines: [line('stale')] } : { lines: [line('fresh')] }
+          return p.then(() => ({ ok: true, json: async () => data }))
+        }),
+      )
+
+      const open1 = ConsoleStore.open('p1')
+      const open2 = ConsoleStore.open('p1')
+
+      dispatchSSE('log', { projectId: 'p1', lines: [line('live')] })
+
+      resolveFirst()
+      await open1
+
+      resolveSecond()
+      await open2
+
+      const result = ConsoleStore.getLines('p1')
+      expect(result.every((l) => l !== null)).toBe(true)
+      expect(result.map((l) => l.text)).toEqual(['stale', 'live'])
+    })
+
+    it('ignores SSE events for other projects during hydration', async () => {
+      const resolve = deferredFetch({ lines: [line('p1-disk')] })
+
+      const openPromise = ConsoleStore.open('p1')
+
+      dispatchSSE('log', { projectId: 'p2', lines: [line('p2-noise')] })
+
+      resolve()
+      await openPromise
+
+      expect(ConsoleStore.getLines('p1').map((l) => l.text)).toEqual(['p1-disk'])
+      expect(ConsoleStore.getLines('p2')).toEqual([])
+    })
+  })
 })
