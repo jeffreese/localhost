@@ -34,3 +34,8 @@
 **Friction:** Crucible required 2 rounds — R1: redirect responses falsely marked unhealthy (redirect:manual + res.ok mismatch), concurrent check overlap without guard, test name contradicting its assertion.
 **Root cause:** Used `res.ok` to check health after adding `redirect: 'manual'` for SSRF prevention — didn't account for res.ok being 2xx-only while 3xx is a valid "alive" response. Overlap guard was missed despite the background poller already having the pattern documented in ADR-012.
 **Category:** crucible-rework
+
+## 2026-10-08 — feat/health-check-lifecycle
+**Friction:** Crucible required 3 rounds — R1: port change not handled (portsRemoved didn't stop health checker), missing portsAdded test, undocumented export. R2: poller hasChanges gate excluded portsRemoved (onDiff never fires for port-only-removed ticks), port-change test only verified stop half.
+**Root cause:** Added a portsRemoved consumer in onDiff without checking that the poller's hasChanges gate actually delivers portsRemoved-only events — a pre-existing gap made material by the new consumer. Port-change test used a mock that didn't simulate real stopChecking behavior (clearing isChecking state), so the restart assertion was silently skipped.
+**Category:** crucible-rework
