@@ -21,7 +21,13 @@ function handleProcessStarted(data: unknown) {
   const { projectId } = data as { projectId: string }
   projects = projects.map((p) =>
     p.id === projectId
-      ? { ...p, processState: 'running' as const, spawnedByUs: true, crashInfo: null }
+      ? {
+          ...p,
+          processState: 'running' as const,
+          spawnedByUs: true,
+          crashInfo: null,
+          healthStatus: null,
+        }
       : p,
   )
   notify()
@@ -59,6 +65,7 @@ function handleProcessCrashed(data: unknown) {
           processState: 'stopped' as const,
           listeners: [],
           crashInfo: { timestamp, exitCode, signal },
+          healthStatus: null,
         }
       : p,
   )

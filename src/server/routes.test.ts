@@ -128,6 +128,41 @@ describe('routes', () => {
     expect(body[0].visibility).toBe('visible')
     expect(body[0].listeners).toEqual([])
     expect(body[0].processState).toBe('stopped')
+    expect(body[0].healthStatus).toBeNull()
+  })
+
+  it('GET /api/projects includes healthStatus for running projects', async () => {
+    resetConfig({
+      projects: {
+        '/tmp/my-app': {
+          name: 'my-app',
+          path: '/tmp/my-app',
+          packageManager: 'pnpm',
+          devScript: 'dev',
+          githubUrl: null,
+        },
+      },
+    })
+    mockListenerMap = {
+      '/tmp/my-app': [{ pid: 1, port: 3000 }],
+    }
+    mockGetAllStatuses.mockReturnValue({})
+
+    const { healthChecker } = await import('./index')
+    vi.mocked(healthChecker.getStatus).mockReturnValue({
+      status: 'healthy',
+      consecutiveFailures: 0,
+      lastCheck: Date.now(),
+      responseTime: 15,
+    })
+
+    const res = await app.request('/api/projects')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body[0].healthStatus).toBe('healthy')
+    expect(body[0].processState).toBe('running')
+
+    vi.mocked(healthChecker.getStatus).mockReturnValue(null)
   })
 
   it('POST /api/scan returns results', async () => {
