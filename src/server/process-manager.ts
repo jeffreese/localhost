@@ -1,5 +1,5 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process'
-import type { Listener, LogLine, PackageManager } from '@shared/types'
+import type { CrashInfo, Listener, LogLine, PackageManager } from '@shared/types'
 import { readConfig, updateConfig } from './config-store'
 import { enumerateListeners, matchListenersToProjects, parseCwdOutput } from './listener-scanner'
 import { appendLines as appendToLogFile, closeLogs } from './log-store'
@@ -90,12 +90,7 @@ function buildCommand(packageManager: PackageManager, script: string): [string, 
   }
 }
 
-export interface CrashEvent {
-  projectId: string
-  exitCode: number | null
-  signal: string | null
-  timestamp: string
-}
+export type CrashEvent = CrashInfo & { projectId: string }
 
 export async function startProject(
   projectId: string,
@@ -110,6 +105,8 @@ export async function startProject(
   if (activeProcesses.has(projectId)) {
     throw new Error(`Project ${projectId} is already running`)
   }
+
+  clearStopping(projectId)
 
   // Fresh start = fresh console. Clear any retained buffer from a prior run.
   logBuffers.delete(projectId)
