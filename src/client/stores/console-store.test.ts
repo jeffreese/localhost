@@ -40,10 +40,10 @@ describe('ConsoleStore', () => {
   })
 
   it('hydrates from /api/projects/:id/logs and sets open project', async () => {
-    const fetched = [line('hello'), line('world')]
+    const fetched = { lines: [line('hello'), line('world')], hasMore: false }
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ json: async () => fetched })),
+      vi.fn(async () => ({ ok: true, json: async () => fetched })),
     )
 
     await ConsoleStore.open('p1')
@@ -56,7 +56,10 @@ describe('ConsoleStore', () => {
   it('appends SSE log events after hydration', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ json: async () => [line('hydrated')] })),
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ lines: [line('hydrated')], hasMore: false }),
+      })),
     )
 
     await ConsoleStore.open('p1')
@@ -69,7 +72,7 @@ describe('ConsoleStore', () => {
     const initial = Array.from({ length: 450 }, (_, i) => line(`init-${i}`))
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ json: async () => initial })),
+      vi.fn(async () => ({ ok: true, json: async () => ({ lines: initial, hasMore: false }) })),
     )
 
     await ConsoleStore.open('p1')
@@ -86,7 +89,10 @@ describe('ConsoleStore', () => {
   it('clears buffer on process-started (mirrors server-side reset)', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ json: async () => [line('old run')] })),
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ lines: [line('old run')], hasMore: false }),
+      })),
     )
 
     await ConsoleStore.open('p1')
@@ -98,7 +104,10 @@ describe('ConsoleStore', () => {
   it('ignores log events for closed (non-hydrated) projects', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ json: async () => [line('p1 hello')] })),
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ lines: [line('p1 hello')], hasMore: false }),
+      })),
     )
     await ConsoleStore.open('p1')
 
@@ -111,7 +120,10 @@ describe('ConsoleStore', () => {
   it('close() clears the open project but keeps cached lines', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ json: async () => [line('cached')] })),
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ lines: [line('cached')], hasMore: false }),
+      })),
     )
     await ConsoleStore.open('p1')
 
@@ -129,7 +141,7 @@ describe('ConsoleStore', () => {
 
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ json: async () => [line('x')] })),
+      vi.fn(async () => ({ ok: true, json: async () => ({ lines: [line('x')], hasMore: false }) })),
     )
     await ConsoleStore.open('p1')
     dispatchSSE('log', { projectId: 'p1', lines: [line('y')] })
@@ -137,5 +149,15 @@ describe('ConsoleStore', () => {
 
     expect(listener).toHaveBeenCalled()
     expect(listener.mock.calls.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('falls back to empty array when fetch returns non-ok response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500 })),
+    )
+    await ConsoleStore.open('err-proj')
+
+    expect(ConsoleStore.getLines('err-proj')).toEqual([])
   })
 })

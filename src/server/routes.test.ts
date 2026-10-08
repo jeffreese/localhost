@@ -34,8 +34,11 @@ vi.mock('./process-manager', () => ({
   startProject: vi.fn(async () => ({})),
   stopProject: vi.fn(async () => {}),
   stopListener: vi.fn(async () => {}),
-  getLogs: vi.fn(() => []),
   hasLogs: vi.fn(() => false),
+}))
+
+vi.mock('./log-store', () => ({
+  readLines: vi.fn(async () => ({ lines: [], hasMore: false })),
 }))
 
 vi.mock('./scanner', () => ({
@@ -106,6 +109,23 @@ describe('routes', () => {
     resetConfig()
     const res = await app.request('/api/scan', { method: 'POST' })
     expect(res.status).toBe(200)
+  })
+
+  it('GET /api/projects/:id/logs returns disk logs with pagination', async () => {
+    resetConfig()
+    const { readLines } = await import('./log-store')
+    const mockReadLines = vi.mocked(readLines)
+    mockReadLines.mockResolvedValueOnce({
+      lines: [{ stream: 'stdout', ts: 1000, text: 'hello' }],
+      hasMore: false,
+    })
+
+    const res = await app.request('/api/projects/my-app/logs?limit=100&offset=5')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.lines).toHaveLength(1)
+    expect(body.hasMore).toBe(false)
+    expect(mockReadLines).toHaveBeenCalledWith('my-app', 100, 5)
   })
 
   it('POST /api/projects/:id/start returns 404 for unknown project', async () => {

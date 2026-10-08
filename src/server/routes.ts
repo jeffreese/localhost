@@ -1,9 +1,9 @@
 import type { Listener, LocalhostConfig, Project, ProjectCache, Visibility } from '@shared/types'
 import { Hono } from 'hono'
 import { readConfig, updateConfig } from './config-store'
+import { readLines } from './log-store'
 import {
   detectAllListeners,
-  getLogs,
   hasLogs,
   startProject,
   stopListener,
@@ -61,10 +61,13 @@ api.post('/scan', async (c) => {
   return c.json(result)
 })
 
-// GET /api/projects/:id/logs — retained stdout/stderr ring buffer
-api.get('/projects/:id/logs', (c) => {
+// GET /api/projects/:id/logs — read persisted logs from disk
+api.get('/projects/:id/logs', async (c) => {
   const projectId = decodeURIComponent(c.req.param('id'))
-  return c.json(getLogs(projectId))
+  const limit = Math.max(1, Math.min(Number(c.req.query('limit')) || 500, 5000))
+  const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
+  const result = await readLines(projectId, limit, offset)
+  return c.json(result)
 })
 
 // POST /api/projects/:id/start — start a project's dev server
