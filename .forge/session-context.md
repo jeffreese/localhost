@@ -1,24 +1,24 @@
 # Session Context
 
 ## What's next
-- Epic 9: Health Checks — task 9.5: Update `<lh-project-card>`: health indicator dot
-- Remaining: 9.6 (per-project interval override)
+- Epic 9: Health Checks — task 9.6: Support per-project `healthCheckInterval` override (0 to disable)
+- This is the last task in Epic 9.
 
 ## Key constraints (carried forward)
-- Health checker core complete (9.1): HealthChecker class with per-project timers, probe (3s timeout, res.status < 500), consecutive failure tracking (threshold 3), overlap guard, onChange callback.
-- Health checker lifecycle wiring complete (9.2): instance in index.ts, wired into poller onDiff. DiffCallback extended with currentListeners second arg.
-- SSE health-changed event complete (9.3): event type in SSEEvent union, setOnChange → broadcast wiring, client SSE relay registered.
-- Health API endpoint complete (9.4): `GET /api/health` returns `{ statuses: Record<string, { status, lastCheck, responseTime?, consecutiveFailures }> }`. Circular import solved by converting routes.ts to factory function (`createApi(healthChecker)`).
+- Health checker core complete (9.1-9.3): HealthChecker class, poller lifecycle wiring, SSE health-changed event.
+- Health API endpoint complete (9.4): `GET /api/health` returns per-project statuses. Routes use `createApi(healthChecker)` factory pattern.
+- Health indicator complete (9.5): `healthStatus` field on Project type, `buildProjectResponse` populates from healthChecker, ProjectStore handles `health-changed` SSE events, card renders colored dot with ARIA label.
 - Fire-and-forget promises need `.catch()` — project rule.
-- Consumer update on shape change: grep all consumers when changing shared types/API shapes — promoted to rule.
+- Consumer update on shape change — project rule. 4+ occurrences.
 
 ## Judgment calls from this session
-- Routes refactored from default export to `createApi(healthChecker)` factory to break circular import between index.ts and routes.ts. Clean dependency injection, no new modules needed.
-- Old `GET /api/health` liveness check (`{ status: 'ok' }`) replaced entirely — server liveness is implicit (if it responds, it's alive).
-- `responseTime` conditionally included (omitted when null) per spec's `responseTime?: number` optional field.
-- `lastCheck` converted from epoch ms to ISO string for the API response, kept as epoch internally.
+- Routes refactored to `createApi(healthChecker)` factory (task 9.4) — broke circular import cleanly.
+- `healthStatus` on Project type is `HealthStatus | null` — null when not running. Spec says `null if not running`.
+- Health dot uses `role="img"` + `aria-label` for accessibility. Colors: success (healthy), danger (unhealthy), warning (unknown).
+- `buildProjectResponse` moved inside `createApi` closure to access `healthChecker.getStatus()`.
+- Process-stopped SSE handler clears `healthStatus` to null.
 
 ## Watch for
-- Task 9.5 adds healthStatus to `<lh-project-card>`. This means adding healthStatus to the Project type in types.ts — trigger `api-shape-change-missing-consumer-update` rule. Sweep ALL consumers of Project type: buildProjectResponse in routes.ts, SSE handlers in stores, any test mocks.
-- The health-changed SSE event already broadcasts `{ projectId, status, responseTime }` — the card component needs to listen for this to update the indicator in real-time without polling.
-- Consider whether healthStatus should come from `GET /api/projects` (added to Project response) or from a separate `GET /api/health` call. Spec shows `healthStatus` in the Project type at api-contracts.md:38.
+- Task 9.6 adds per-project interval override. This likely means adding a `healthCheckInterval` field to config overrides, a new API endpoint or extending PATCH /api/projects/:id, and passing the interval to `healthChecker.startChecking()`.
+- The `startChecking` method already accepts `intervalMs` as third param (default 30s). The plumbing is ready.
+- Config schema change → backward-compatible defaults in `readConfig`.

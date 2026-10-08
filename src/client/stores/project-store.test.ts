@@ -35,6 +35,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     processState: 'stopped',
     spawnedByUs: false,
     crashInfo: null,
+    healthStatus: null,
     ...overrides,
   }
 }
@@ -149,6 +150,97 @@ describe('ProjectStore crash notifications', () => {
     ProjectStore.init()
 
     expect(mock.requestPermission).not.toHaveBeenCalled()
+    ProjectStore.destroy()
+  })
+})
+
+describe('ProjectStore health status', () => {
+  beforeEach(() => {
+    sseHandlers.clear()
+  })
+
+  it('updates healthStatus on health-changed SSE event', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([makeProject({ id: 'app', processState: 'running' })])
+
+    dispatchSSE('health-changed', { projectId: 'app', status: 'healthy' })
+
+    const updated = ProjectStore.getAll()
+    expect(updated[0].healthStatus).toBe('healthy')
+    ProjectStore.destroy()
+  })
+
+  it('transitions from healthy to unhealthy', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([
+      makeProject({ id: 'app', processState: 'running', healthStatus: 'healthy' }),
+    ])
+
+    dispatchSSE('health-changed', { projectId: 'app', status: 'unhealthy' })
+
+    expect(ProjectStore.getAll()[0].healthStatus).toBe('unhealthy')
+    ProjectStore.destroy()
+  })
+
+  it('clears healthStatus on process-stopped', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([
+      makeProject({ id: 'app', processState: 'running', healthStatus: 'healthy' }),
+    ])
+
+    dispatchSSE('process-stopped', { projectId: 'app' })
+
+    const stopped = ProjectStore.getAll()[0]
+    expect(stopped.healthStatus).toBeNull()
+    expect(stopped.processState).toBe('stopped')
+    ProjectStore.destroy()
+  })
+
+  it('clears healthStatus on process-crashed', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([
+      makeProject({ id: 'app', processState: 'running', healthStatus: 'healthy' }),
+    ])
+
+    dispatchSSE('process-crashed', {
+      projectId: 'app',
+      exitCode: 1,
+      signal: null,
+      timestamp: new Date().toISOString(),
+    })
+
+    const crashed = ProjectStore.getAll()[0]
+    expect(crashed.healthStatus).toBeNull()
+    expect(crashed.processState).toBe('stopped')
+    ProjectStore.destroy()
+  })
+
+  it('clears healthStatus on process-started', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([
+      makeProject({ id: 'app', processState: 'stopped', healthStatus: 'healthy' }),
+    ])
+
+    dispatchSSE('process-started', { projectId: 'app' })
+
+    const started = ProjectStore.getAll()[0]
+    expect(started.healthStatus).toBeNull()
+    expect(started.processState).toBe('running')
+    ProjectStore.destroy()
+  })
+
+  it('does not affect other projects on health-changed', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([
+      makeProject({ id: 'app1', processState: 'running' }),
+      makeProject({ id: 'app2', processState: 'running', healthStatus: 'healthy' }),
+    ])
+
+    dispatchSSE('health-changed', { projectId: 'app1', status: 'unhealthy' })
+
+    const projects = ProjectStore.getAll()
+    expect(projects[0].healthStatus).toBe('unhealthy')
+    expect(projects[1].healthStatus).toBe('healthy')
     ProjectStore.destroy()
   })
 })
