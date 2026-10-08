@@ -12,16 +12,40 @@ export type SSEEvent =
   | { type: 'log'; data: { projectId: string; lines: LogLine[] } }
 
 type SSEClient = {
-  send: (event: SSEEvent) => void
+  send: (event: SSEEvent, id: number) => void
   close: () => void
 }
 
 const clients = new Set<SSEClient>()
 
+let eventId = 0
+
 export function broadcast(event: SSEEvent): void {
+  eventId++
   for (const client of clients) {
-    client.send(event)
+    client.send(event, eventId)
   }
+}
+
+export function getEventId(): number {
+  return eventId
+}
+
+/** Test-only: reset the event ID counter. */
+export function __resetEventId() {
+  eventId = 0
+}
+
+/** Test-only: remove all clients from the broadcast set. */
+export function __clearClients() {
+  clients.clear()
+}
+
+/** Test-only: add a client to the broadcast set. Returns a remove function. */
+export function __addClient(client: { send: (event: SSEEvent, id: number) => void }) {
+  const wrapped: SSEClient = { send: client.send, close: () => clients.delete(wrapped) }
+  clients.add(wrapped)
+  return () => clients.delete(wrapped)
 }
 
 export function getClientCount(): number {
@@ -33,12 +57,13 @@ export function handleSSE(c: Context) {
     let closed = false
 
     const client: SSEClient = {
-      send: (event) => {
+      send: (event, id) => {
         if (closed) return
         stream
           .writeSSE({
             event: event.type,
             data: JSON.stringify(event.data),
+            id: String(id),
           })
           .catch(() => {
             closed = true
