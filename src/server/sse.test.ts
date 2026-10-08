@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { __resetEventId, broadcast, getEventId } from './sse'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { __addClient, __resetEventId, broadcast, getEventId } from './sse'
 
 describe('SSE event IDs', () => {
   beforeEach(() => {
@@ -33,5 +33,33 @@ describe('SSE event IDs', () => {
 
     __resetEventId()
     expect(getEventId()).toBe(0)
+  })
+
+  it('delivers event ID to connected clients', () => {
+    const send = vi.fn()
+    const remove = __addClient({ send })
+
+    broadcast({ type: 'process-started', data: { projectId: 'a' } })
+    expect(send).toHaveBeenCalledWith({ type: 'process-started', data: { projectId: 'a' } }, 1)
+
+    broadcast({ type: 'process-stopped', data: { projectId: 'b' } })
+    expect(send).toHaveBeenCalledWith({ type: 'process-stopped', data: { projectId: 'b' } }, 2)
+
+    remove()
+  })
+
+  it('delivers same event ID to all connected clients', () => {
+    const send1 = vi.fn()
+    const send2 = vi.fn()
+    const remove1 = __addClient({ send: send1 })
+    const remove2 = __addClient({ send: send2 })
+
+    broadcast({ type: 'scan-complete', data: {} })
+
+    expect(send1).toHaveBeenCalledWith({ type: 'scan-complete', data: {} }, 1)
+    expect(send2).toHaveBeenCalledWith({ type: 'scan-complete', data: {} }, 1)
+
+    remove1()
+    remove2()
   })
 })
