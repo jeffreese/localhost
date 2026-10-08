@@ -20,10 +20,10 @@ describe('probe', () => {
     expect(result.responseTime).toBeGreaterThanOrEqual(0)
   })
 
-  it('returns unhealthy on non-ok response', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 500 }))
+  it('returns healthy on 4xx (server is alive)', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 404 }))
     const result = await probe(3000)
-    expect(result.status).toBe('unhealthy')
+    expect(result.status).toBe('healthy')
     expect(result.responseTime).toBeGreaterThanOrEqual(0)
   })
 
@@ -79,8 +79,14 @@ describe('probe', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 
-  it('treats redirect responses as healthy', async () => {
+  it('treats redirect responses as healthy (server is alive)', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 301 }))
+    const result = await probe(3000)
+    expect(result.status).toBe('healthy')
+  })
+
+  it('treats 5xx responses as unhealthy', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 503 }))
     const result = await probe(3000)
     expect(result.status).toBe('unhealthy')
   })
@@ -402,6 +408,34 @@ describe('HealthChecker', () => {
       expect(callCount).toBe(3)
       expect(checker.isChecking('proj-a')).toBe(true)
       consoleSpy.mockRestore()
+    })
+
+    it('skips interval check when a previous check is still in flight', async () => {
+      let probeCount = 0
+      const pending: { resolve: (() => void) | null } = { resolve: null }
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        probeCount++
+        return new Promise((resolve) => {
+          pending.resolve = () => resolve(new Response(null, { status: 200 }))
+        })
+      })
+
+      checker.startChecking('proj-a', 3000, 1000)
+      // Initial check is now in flight (probeCount = 1)
+      expect(probeCount).toBe(1)
+
+      // Interval fires but initial check hasn't resolved
+      await vi.advanceTimersByTimeAsync(1000)
+      // Should NOT have started a second probe
+      expect(probeCount).toBe(1)
+
+      // Resolve the first check
+      pending.resolve?.()
+      await vi.advanceTimersByTimeAsync(0)
+
+      // Next interval fires, now check is free
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(probeCount).toBe(2)
     })
 
     it('handles stopChecking during an in-flight check gracefully', async () => {

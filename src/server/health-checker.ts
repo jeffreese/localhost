@@ -20,6 +20,7 @@ export type HealthChangeCallback = (
 export class HealthChecker {
   private timers = new Map<string, ReturnType<typeof setInterval>>()
   private state = new Map<string, HealthState>()
+  private checking = new Set<string>()
   private onChange: HealthChangeCallback | null = null
 
   setOnChange(callback: HealthChangeCallback): void {
@@ -58,6 +59,7 @@ export class HealthChecker {
       this.timers.delete(projectId)
     }
     this.state.delete(projectId)
+    this.checking.delete(projectId)
   }
 
   stopAll(): void {
@@ -66,6 +68,7 @@ export class HealthChecker {
       this.timers.delete(projectId)
     }
     this.state.clear()
+    this.checking.clear()
   }
 
   getStatus(projectId: string): HealthState | null {
@@ -88,25 +91,33 @@ export class HealthChecker {
   private async check(projectId: string, port: number): Promise<void> {
     const current = this.state.get(projectId)
     if (!current) return
+    if (this.checking.has(projectId)) return
+    this.checking.add(projectId)
 
-    const { status: newStatus, responseTime } = await probe(port)
-    const previousStatus = current.status
+    try {
+      const { status: newStatus, responseTime } = await probe(port)
+      const stillCurrent = this.state.get(projectId)
+      if (!stillCurrent) return
+      const previousStatus = stillCurrent.status
 
-    if (newStatus === 'healthy') {
-      current.consecutiveFailures = 0
-      current.status = 'healthy'
-    } else {
-      current.consecutiveFailures++
-      if (current.consecutiveFailures >= UNHEALTHY_THRESHOLD) {
-        current.status = 'unhealthy'
+      if (newStatus === 'healthy') {
+        stillCurrent.consecutiveFailures = 0
+        stillCurrent.status = 'healthy'
+      } else {
+        stillCurrent.consecutiveFailures++
+        if (stillCurrent.consecutiveFailures >= UNHEALTHY_THRESHOLD) {
+          stillCurrent.status = 'unhealthy'
+        }
       }
-    }
 
-    current.lastCheck = Date.now()
-    current.responseTime = responseTime
+      stillCurrent.lastCheck = Date.now()
+      stillCurrent.responseTime = responseTime
 
-    if (current.status !== previousStatus) {
-      this.onChange?.(projectId, current.status, responseTime)
+      if (stillCurrent.status !== previousStatus) {
+        this.onChange?.(projectId, stillCurrent.status, responseTime)
+      }
+    } finally {
+      this.checking.delete(projectId)
     }
   }
 }
@@ -128,7 +139,7 @@ export async function probe(
       redirect: 'manual',
     })
     const responseTime = Date.now() - start
-    return { status: res.ok ? 'healthy' : 'unhealthy', responseTime }
+    return { status: res.status < 500 ? 'healthy' : 'unhealthy', responseTime }
   } catch {
     return { status: 'unhealthy', responseTime: Date.now() - start }
   } finally {
