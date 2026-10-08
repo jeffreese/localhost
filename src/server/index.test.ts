@@ -306,11 +306,17 @@ describe('poller lifecycle', () => {
     vi.mocked(healthChecker.startChecking).mockClear()
     vi.mocked(healthChecker.stopChecking).mockClear()
     vi.mocked(healthChecker.isChecking).mockReturnValue(true)
+    vi.mocked(healthChecker.stopChecking).mockImplementation(() => {
+      vi.mocked(healthChecker.isChecking).mockReturnValue(false)
+    })
 
     mockDetect.mockResolvedValueOnce({ myApp: [{ pid: 1, port: 4000 }] })
     await vi.advanceTimersByTimeAsync(100)
 
     expect(healthChecker.stopChecking).toHaveBeenCalledWith('myApp')
+    expect(healthChecker.startChecking).toHaveBeenCalledWith('myApp', 4000)
+
+    vi.mocked(healthChecker.stopChecking).mockReset()
     vi.mocked(healthChecker.isChecking).mockReturnValue(false)
 
     poller.stop()

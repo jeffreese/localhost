@@ -194,7 +194,8 @@ export class BackgroundPoller {
         diff.started.length > 0 ||
         diff.stopped.length > 0 ||
         diff.crashed.length > 0 ||
-        diff.portsAdded.length > 0
+        diff.portsAdded.length > 0 ||
+        diff.portsRemoved.length > 0
       if (this.onDiff && hasChanges) {
         try {
           const result: unknown = this.onDiff(structuredClone(diff), structuredClone(current))

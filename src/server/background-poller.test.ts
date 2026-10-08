@@ -545,7 +545,7 @@ describe('BackgroundPoller onDiff callback', () => {
     consoleSpy.mockRestore()
   })
 
-  it('does not call onDiff for portsRemoved-only changes', async () => {
+  it('calls onDiff for portsRemoved-only changes', async () => {
     const diffs: Array<unknown> = []
     poller.setOnDiff((diff) => diffs.push(diff))
 
@@ -562,7 +562,12 @@ describe('BackgroundPoller onDiff callback', () => {
     mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
     await vi.advanceTimersByTimeAsync(100)
 
-    expect(diffs).toHaveLength(0)
+    expect(diffs).toHaveLength(1)
+    expect(diffs[0]).toEqual(
+      expect.objectContaining({
+        portsRemoved: [{ projectId: 'a', port: 3001 }],
+      }),
+    )
   })
 
   it('calls onDiff with crashed projects when stop flag is not set', async () => {
