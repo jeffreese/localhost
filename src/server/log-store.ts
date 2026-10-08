@@ -38,8 +38,13 @@ function formatLine(line: LogLine): string {
   return `[${ts} ${line.stream}] ${line.text}\n`
 }
 
-export async function appendLines(projectName: string, lines: LogLine[]): Promise<void> {
+export async function appendLines(
+  projectName: string,
+  lines: LogLine[],
+  maxSize: number = DEFAULT_MAX_SIZE,
+): Promise<void> {
   if (lines.length === 0) return
+  await rotateIfNeeded(projectName, maxSize)
   const handle = await getHandle(projectName)
   const data = lines.map(formatLine).join('')
   await handle.write(data)
