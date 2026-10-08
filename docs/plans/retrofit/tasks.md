@@ -51,7 +51,7 @@ date: 2026-10-05
 - [x] 5.3 Wire diff to SSE broadcasts: `process-started`, `process-stopped`, `port-detected`.
 - [x] 5.4 Add overlap guard: skip tick if previous still running.
 - [x] 5.5 Start poller on server startup, stop on shutdown.
-- [ ] 5.6 Add event IDs to SSE broadcaster (monotonic counter).
+- [x] 5.6 Add event IDs to SSE broadcaster (monotonic counter).
 - [ ] 5.7 Write tests: diff logic, SSE broadcast verification, overlap guard.
 
 ## Epic 6: Log Persistence
