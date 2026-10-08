@@ -1,4 +1,4 @@
-import type { PortType, Project, Visibility } from '@shared/types'
+import type { CrashInfo, PortType, Project, Visibility } from '@shared/types'
 import { off, on } from '../sse-client'
 
 type Listener = () => void
@@ -31,6 +31,21 @@ function handleProcessStopped(data: unknown) {
   const { projectId } = data as { projectId: string }
   projects = projects.map((p) =>
     p.id === projectId ? { ...p, processState: 'stopped' as const, listeners: [] } : p,
+  )
+  notify()
+}
+
+function handleProcessCrashed(data: unknown) {
+  const { projectId, exitCode, signal, timestamp } = data as CrashInfo & { projectId: string }
+  projects = projects.map((p) =>
+    p.id === projectId
+      ? {
+          ...p,
+          processState: 'stopped' as const,
+          listeners: [],
+          crashInfo: { timestamp, exitCode, signal },
+        }
+      : p,
   )
   notify()
 }
@@ -77,6 +92,7 @@ export const ProjectStore = {
     on('scan-complete', handleScanComplete)
     on('process-started', handleProcessStarted)
     on('process-stopped', handleProcessStopped)
+    on('process-crashed', handleProcessCrashed)
     on('port-detected', handlePortDetected)
     on('project-updated', handleProjectUpdated)
   },
@@ -85,6 +101,7 @@ export const ProjectStore = {
     off('scan-complete', handleScanComplete)
     off('process-started', handleProcessStarted)
     off('process-stopped', handleProcessStopped)
+    off('process-crashed', handleProcessCrashed)
     off('port-detected', handlePortDetected)
     off('project-updated', handleProjectUpdated)
   },
