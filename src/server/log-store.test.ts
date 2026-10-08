@@ -6,6 +6,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 
 const testHome = mkdtempSync(join(tmpdir(), 'log-store-test-'))
 
+let statOverride: ((...args: unknown[]) => Promise<unknown>) | null = null
+
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof import('node:os')>('node:os')
   return {
@@ -14,9 +16,19 @@ vi.mock('node:os', async () => {
   }
 })
 
-const { appendLines, rotateIfNeeded, closeLogs, closeAll, LOG_DIR, __resetLogStore } = await import(
-  './log-store'
-)
+vi.mock('node:fs/promises', async () => {
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+  return {
+    ...actual,
+    stat: (...args: unknown[]) =>
+      statOverride
+        ? statOverride(...args)
+        : (actual.stat as (...a: unknown[]) => Promise<unknown>)(...args),
+  }
+})
+
+const { appendLines, rotateIfNeeded, closeLogs, closeAll, LOG_DIR, __resetLogStore, __setHandle } =
+  await import('./log-store')
 
 const logsDir = join(testHome, '.localhost', 'logs')
 
@@ -24,6 +36,7 @@ describe('log-store', () => {
   beforeEach(async () => {
     await closeAll()
     __resetLogStore()
+    statOverride = null
     if (existsSync(logsDir)) {
       rmSync(logsDir, { recursive: true })
     }
@@ -160,6 +173,30 @@ describe('log-store', () => {
 
       const content = readFileSync(join(logsDir, 'proj-a.log'), 'utf-8')
       expect(content).toContain('a2')
+    })
+
+    it('closes remaining handles when one close throws', async () => {
+      const goodClose = vi.fn()
+      const badHandle = { close: vi.fn().mockRejectedValue(new Error('fd already closed')) }
+      const goodHandle = { close: goodClose }
+
+      __resetLogStore()
+      __setHandle('bad-proj', badHandle as never)
+      __setHandle('good-proj', goodHandle as never)
+
+      await closeAll()
+
+      expect(badHandle.close).toHaveBeenCalled()
+      expect(goodClose).toHaveBeenCalled()
+    })
+  })
+
+  describe('rotateIfNeeded error handling', () => {
+    it('re-throws non-ENOENT stat errors', async () => {
+      const eacces = Object.assign(new Error('permission denied'), { code: 'EACCES' })
+      statOverride = () => Promise.reject(eacces)
+
+      await expect(rotateIfNeeded('stat-error', 1)).rejects.toThrow('permission denied')
     })
   })
 })

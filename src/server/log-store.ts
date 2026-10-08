@@ -54,8 +54,9 @@ export async function rotateIfNeeded(
   try {
     const s = await stat(path)
     size = s.size
-  } catch {
-    return false
+  } catch (err: unknown) {
+    if (err instanceof Error && 'code' in err && err.code === 'ENOENT') return false
+    throw err
   }
   if (size < maxSize) return false
 
@@ -75,7 +76,11 @@ export async function closeAll(): Promise<void> {
   const entries = [...fileHandles.entries()]
   fileHandles.clear()
   for (const [, handle] of entries) {
-    await handle.close()
+    try {
+      await handle.close()
+    } catch (err) {
+      console.error('Failed to close log handle:', err)
+    }
   }
 }
 
@@ -83,4 +88,8 @@ export { LOG_DIR }
 
 export function __resetLogStore(): void {
   fileHandles.clear()
+}
+
+export function __setHandle(projectName: string, handle: FileHandle): void {
+  fileHandles.set(projectName, handle)
 }
