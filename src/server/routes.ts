@@ -32,6 +32,7 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
     cached: ProjectCache,
     listeners: Listener[],
     config: LocalhostConfig,
+    resourceMap: Record<string, ResourceUsage>,
   ): Project {
     const visibility: Visibility = config.ignored.includes(id)
       ? 'ignored'
@@ -52,7 +53,7 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
       spawnedByUs: hasLogs(id),
       crashInfo: config.crashes[id] ?? null,
       healthStatus: isRunning ? (healthChecker.getStatus(id)?.status ?? null) : null,
-      resourceUsage: isRunning ? (resourceGetter?.getResourceUsage()[id] ?? null) : null,
+      resourceUsage: isRunning ? (resourceMap[id] ?? null) : null,
     }
   }
   const api = new Hono()
@@ -90,9 +91,10 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
   api.get('/projects', async (c) => {
     const config = await readConfig()
     const listenerMap = await detectAllListeners()
+    const resourceMap = resourceGetter?.getResourceUsage() ?? {}
 
     const projects = Object.entries(config.projects).map(([id, cached]) =>
-      buildProjectResponse(id, cached, listenerMap[id] ?? [], config),
+      buildProjectResponse(id, cached, listenerMap[id] ?? [], config, resourceMap),
     )
 
     return c.json(projects)
@@ -103,9 +105,10 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
     const projects = await scanAndPersist()
     const config = await readConfig()
     const listenerMap = await detectAllListeners()
+    const resourceMap = resourceGetter?.getResourceUsage() ?? {}
 
     const result = Array.from(projects.entries()).map(([id, cached]) =>
-      buildProjectResponse(id, cached, listenerMap[id] ?? [], config),
+      buildProjectResponse(id, cached, listenerMap[id] ?? [], config, resourceMap),
     )
 
     broadcast({ type: 'scan-complete', data: result })
