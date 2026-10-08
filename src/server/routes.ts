@@ -15,33 +15,34 @@ import {
 import { scanAndPersist } from './scanner'
 import { broadcast, handleSSE } from './sse'
 
-function buildProjectResponse(
-  id: string,
-  cached: ProjectCache,
-  listeners: Listener[],
-  config: LocalhostConfig,
-): Project {
-  const visibility: Visibility = config.ignored.includes(id)
-    ? 'ignored'
-    : config.hidden.includes(id)
-      ? 'hidden'
-      : 'visible'
-  const enrichedListeners = listeners.map((l) => ({
-    ...l,
-    portType: getPortType(l.port),
-  }))
-  return {
-    id,
-    ...cached,
-    visibility,
-    listeners: enrichedListeners,
-    processState: listeners.length > 0 ? 'running' : 'stopped',
-    spawnedByUs: hasLogs(id),
-    crashInfo: config.crashes[id] ?? null,
-  }
-}
-
 export function createApi(healthChecker: HealthChecker) {
+  function buildProjectResponse(
+    id: string,
+    cached: ProjectCache,
+    listeners: Listener[],
+    config: LocalhostConfig,
+  ): Project {
+    const visibility: Visibility = config.ignored.includes(id)
+      ? 'ignored'
+      : config.hidden.includes(id)
+        ? 'hidden'
+        : 'visible'
+    const enrichedListeners = listeners.map((l) => ({
+      ...l,
+      portType: getPortType(l.port),
+    }))
+    const isRunning = listeners.length > 0
+    return {
+      id,
+      ...cached,
+      visibility,
+      listeners: enrichedListeners,
+      processState: isRunning ? 'running' : 'stopped',
+      spawnedByUs: hasLogs(id),
+      crashInfo: config.crashes[id] ?? null,
+      healthStatus: isRunning ? (healthChecker.getStatus(id)?.status ?? null) : null,
+    }
+  }
   const api = new Hono()
 
   // GET /api/health — per-project health status summary

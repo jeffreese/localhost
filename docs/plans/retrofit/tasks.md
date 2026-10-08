@@ -86,7 +86,7 @@ date: 2026-10-05
 - [x] 9.2 Auto-start health checks when service starts, stop when it stops.
 - [x] 9.3 Broadcast `health-changed` SSE event on status transitions.
 - [x] 9.4 Add `GET /api/health` endpoint.
-- [ ] 9.5 Update `<lh-project-card>`: health indicator dot.
+- [x] 9.5 Update `<lh-project-card>`: health indicator dot.
 - [ ] 9.6 Support per-project `healthCheckInterval` override (0 to disable).
 
 ## Epic 10: Resource Monitoring

@@ -1,4 +1,4 @@
-import type { CrashInfo, PortType, Project, Visibility } from '@shared/types'
+import type { CrashInfo, HealthStatus, PortType, Project, Visibility } from '@shared/types'
 import { off, on } from '../sse-client'
 
 type Listener = () => void
@@ -30,7 +30,9 @@ function handleProcessStarted(data: unknown) {
 function handleProcessStopped(data: unknown) {
   const { projectId } = data as { projectId: string }
   projects = projects.map((p) =>
-    p.id === projectId ? { ...p, processState: 'stopped' as const, listeners: [] } : p,
+    p.id === projectId
+      ? { ...p, processState: 'stopped' as const, listeners: [], healthStatus: null }
+      : p,
   )
   notify()
 }
@@ -91,6 +93,12 @@ function handlePortDetected(data: unknown) {
   notify()
 }
 
+function handleHealthChanged(data: unknown) {
+  const { projectId, status } = data as { projectId: string; status: HealthStatus }
+  projects = projects.map((p) => (p.id === projectId ? { ...p, healthStatus: status } : p))
+  notify()
+}
+
 function handleProjectUpdated(_data: unknown) {
   // Refetch on next getAll — for now just notify to trigger re-render
   notify()
@@ -109,6 +117,7 @@ export const ProjectStore = {
     on('process-crashed', handleProcessCrashed)
     on('port-detected', handlePortDetected)
     on('project-updated', handleProjectUpdated)
+    on('health-changed', handleHealthChanged)
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {})
     }
@@ -121,6 +130,7 @@ export const ProjectStore = {
     off('process-crashed', handleProcessCrashed)
     off('port-detected', handlePortDetected)
     off('project-updated', handleProjectUpdated)
+    off('health-changed', handleHealthChanged)
   },
 
   getAll(): Project[] {

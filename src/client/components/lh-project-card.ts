@@ -35,6 +35,32 @@ export class LhProjectCard extends LitElement {
     return 'Stopped'
   }
 
+  private get healthDotColor(): string {
+    switch (this.project.healthStatus) {
+      case 'healthy':
+        return 'bg-success'
+      case 'unhealthy':
+        return 'bg-danger'
+      case 'unknown':
+        return 'bg-warning'
+      default:
+        return ''
+    }
+  }
+
+  private get healthLabel(): string {
+    switch (this.project.healthStatus) {
+      case 'healthy':
+        return 'Healthy'
+      case 'unhealthy':
+        return 'Unhealthy'
+      case 'unknown':
+        return 'Health unknown'
+      default:
+        return ''
+    }
+  }
+
   private formatCrashInfo(): string {
     const crash = this.project.crashInfo
     if (!crash) return ''
@@ -130,6 +156,16 @@ export class LhProjectCard extends LitElement {
         <div class="flex items-center gap-xs mb-sm text-xs">
           <span class="${this.hasCrash ? 'text-danger' : 'text-secondary'}">${this.statusLabel}</span>
           ${this.hasCrash ? html`<span class="text-danger">${this.formatCrashInfo()}</span>` : ''}
+          ${
+            this.project.healthStatus
+              ? html`<span
+                  class="inline-block w-2 h-2 rounded-full ${this.healthDotColor}"
+                  role="img"
+                  aria-label=${this.healthLabel}
+                  title=${this.healthLabel}
+                ></span>`
+              : ''
+          }
           ${
             p.listeners.length > 0
               ? p.listeners.map((l) => html`<span class="text-muted">· :${l.port}</span>`)
