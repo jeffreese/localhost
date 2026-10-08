@@ -54,7 +54,15 @@ export type DiffCallback = (diff: ListenerDiff) => void
 export type PollerEvent =
   | { type: 'process-started'; data: { projectId: string } }
   | { type: 'process-stopped'; data: { projectId: string } }
-  | { type: 'process-crashed'; data: { projectId: string } }
+  | {
+      type: 'process-crashed'
+      data: {
+        projectId: string
+        exitCode: number | null
+        signal: string | null
+        timestamp: string
+      }
+    }
   | { type: 'port-detected'; data: { projectId: string; port: number; portType?: PortType } }
 
 export function broadcastDiff(diff: ListenerDiff, emit: (event: PollerEvent) => void) {
@@ -65,7 +73,15 @@ export function broadcastDiff(diff: ListenerDiff, emit: (event: PollerEvent) => 
     emit({ type: 'process-stopped', data: { projectId } })
   }
   for (const projectId of diff.crashed) {
-    emit({ type: 'process-crashed', data: { projectId } })
+    emit({
+      type: 'process-crashed',
+      data: {
+        projectId,
+        exitCode: null,
+        signal: null,
+        timestamp: new Date().toISOString(),
+      },
+    })
   }
   for (const { projectId, port } of diff.portsAdded) {
     emit({ type: 'port-detected', data: { projectId, port, portType: getPortType(port) } })

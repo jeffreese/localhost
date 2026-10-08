@@ -4,6 +4,7 @@ import { readConfig, updateConfig } from './config-store'
 import { readLines } from './log-store'
 import { getPortType } from './port-probe'
 import {
+  type CrashEvent,
   detectAllListeners,
   hasLogs,
   startProject,
@@ -125,6 +126,9 @@ api.post('/projects/:id/start', async (c) => {
         broadcast({ type: 'log', data: { projectId: id, lines } })
       },
       portOverride,
+      (event: CrashEvent) => {
+        broadcast({ type: 'process-crashed', data: event })
+      },
     )
     broadcast({ type: 'process-started', data: { projectId } })
     return c.json({ status: 'started', projectId })

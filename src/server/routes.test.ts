@@ -203,6 +203,7 @@ describe('routes', () => {
         expect.any(Function),
         expect.any(Function),
         4000,
+        expect.any(Function),
       )
     })
 
@@ -217,6 +218,7 @@ describe('routes', () => {
         expect.any(Function),
         expect.any(Function),
         undefined,
+        expect.any(Function),
       )
     })
 

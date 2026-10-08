@@ -380,7 +380,17 @@ describe('broadcastDiff', () => {
       { started: [], stopped: [], crashed: ['y'], portsAdded: [], portsRemoved: [] },
       (e) => events.push(e),
     )
-    expect(events).toEqual([{ type: 'process-crashed', data: { projectId: 'y' } }])
+    expect(events).toEqual([
+      {
+        type: 'process-crashed',
+        data: {
+          projectId: 'y',
+          exitCode: null,
+          signal: null,
+          timestamp: expect.any(String),
+        },
+      },
+    ])
   })
 
   it('emits port-detected for added ports', () => {
