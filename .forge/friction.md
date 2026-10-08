@@ -44,3 +44,8 @@
 **Friction:** Crucible required 2 rounds — R1: SSE client relay missing health-changed addEventListener (api-shape-change-missing-consumer-update, 4th occurrence).
 **Root cause:** Added server-side SSE event type and broadcast wiring but didn't grep for client SSE consumers. The sse-client.ts uses explicit addEventListener per type, so new events need manual registration. Same pattern as PRs #40, #44, #47.
 **Category:** crucible-rework
+
+## 2026-10-08 — feat/health-indicator-dot
+**Friction:** Crucible required 3 rounds — R1: handleProcessCrashed and handleProcessStarted missing healthStatus clear, missing test for crash clearing, routes.test.ts missing healthStatus assertions. R2: missing test for healthStatus cleared on process-started.
+**Root cause:** Added healthStatus to Project type and updated several consumers but missed 2 of 4 SSE handlers that spread Project objects. Despite the api-shape-change-missing-consumer-update rule and pre-implementation watch list flagging this exact pattern, the sweep was incomplete — stopped was updated but crashed and started were missed. 5th occurrence.
+**Category:** crucible-rework
