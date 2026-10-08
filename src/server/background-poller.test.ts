@@ -3,6 +3,8 @@ import { BackgroundPoller, broadcastDiff, diffListeners } from './background-pol
 
 vi.mock('./process-manager', () => ({
   detectAllListeners: vi.fn().mockResolvedValue({}),
+  isStopping: vi.fn().mockReturnValue(false),
+  clearStopping: vi.fn(),
 }))
 
 vi.mock('./port-probe', async (importOriginal) => {
@@ -14,10 +16,12 @@ vi.mock('./port-probe', async (importOriginal) => {
 })
 
 import { clearPortTypeCache, getPortType, probePort } from './port-probe'
-import { detectAllListeners } from './process-manager'
+import { clearStopping, detectAllListeners, isStopping } from './process-manager'
 
 const mockDetect = vi.mocked(detectAllListeners)
 const mockProbe = vi.mocked(probePort)
+const mockIsStopping = vi.mocked(isStopping)
+const mockClearStopping = vi.mocked(clearStopping)
 
 describe('BackgroundPoller', () => {
   let poller: BackgroundPoller
@@ -27,6 +31,8 @@ describe('BackgroundPoller', () => {
     poller = new BackgroundPoller()
     mockDetect.mockReset().mockResolvedValue({})
     mockProbe.mockReset().mockResolvedValue('http')
+    mockIsStopping.mockReset().mockReturnValue(false)
+    mockClearStopping.mockReset()
     clearPortTypeCache()
   })
 
@@ -177,7 +183,7 @@ describe('BackgroundPoller', () => {
     expect(poller.getLastDiff()?.started).toEqual(['a'])
   })
 
-  it('tracks project lifecycle across multiple ticks', async () => {
+  it('classifies disappeared project as crashed when no stop flag', async () => {
     mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
     poller.start(100)
     await vi.advanceTimersByTimeAsync(100)
@@ -191,7 +197,24 @@ describe('BackgroundPoller', () => {
 
     const diff2 = poller.getLastDiff()
     if (!diff2) throw new Error('expected diff')
-    expect(diff2.stopped).toEqual(['a'])
+    expect(diff2.crashed).toEqual(['a'])
+    expect(diff2.stopped).toEqual([])
+  })
+
+  it('classifies disappeared project as stopped when stop flag is set', async () => {
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    mockIsStopping.mockReturnValue(true)
+    mockDetect.mockResolvedValueOnce({})
+    await vi.advanceTimersByTimeAsync(100)
+
+    const diff = poller.getLastDiff()
+    if (!diff) throw new Error('expected diff')
+    expect(diff.stopped).toEqual(['a'])
+    expect(diff.crashed).toEqual([])
+    expect(mockClearStopping).toHaveBeenCalledWith('a')
   })
 
   it('overlap guard clears after multiple skipped ticks', async () => {
@@ -223,6 +246,7 @@ describe('diffListeners', () => {
     const diff = diffListeners(state, state)
     expect(diff.started).toEqual([])
     expect(diff.stopped).toEqual([])
+    expect(diff.crashed).toEqual([])
     expect(diff.portsAdded).toEqual([])
     expect(diff.portsRemoved).toEqual([])
   })
@@ -230,12 +254,14 @@ describe('diffListeners', () => {
   it('detects new projects as started', () => {
     const diff = diffListeners({}, { a: [{ pid: 1, port: 3000 }] })
     expect(diff.started).toEqual(['a'])
+    expect(diff.crashed).toEqual([])
     expect(diff.portsAdded).toEqual([])
   })
 
-  it('detects removed projects as stopped', () => {
+  it('detects removed projects as stopped (not crashed — classification is poller responsibility)', () => {
     const diff = diffListeners({ a: [{ pid: 1, port: 3000 }] }, {})
     expect(diff.stopped).toEqual(['a'])
+    expect(diff.crashed).toEqual([])
     expect(diff.portsRemoved).toEqual([])
   })
 
@@ -329,8 +355,9 @@ describe('diffListeners', () => {
 describe('broadcastDiff', () => {
   it('emits process-started for new projects', () => {
     const events: Array<{ type: string; data: unknown }> = []
-    broadcastDiff({ started: ['a', 'b'], stopped: [], portsAdded: [], portsRemoved: [] }, (e) =>
-      events.push(e),
+    broadcastDiff(
+      { started: ['a', 'b'], stopped: [], crashed: [], portsAdded: [], portsRemoved: [] },
+      (e) => events.push(e),
     )
     expect(events).toEqual([
       { type: 'process-started', data: { projectId: 'a' } },
@@ -340,10 +367,20 @@ describe('broadcastDiff', () => {
 
   it('emits process-stopped for removed projects', () => {
     const events: Array<{ type: string; data: unknown }> = []
-    broadcastDiff({ started: [], stopped: ['x'], portsAdded: [], portsRemoved: [] }, (e) =>
-      events.push(e),
+    broadcastDiff(
+      { started: [], stopped: ['x'], crashed: [], portsAdded: [], portsRemoved: [] },
+      (e) => events.push(e),
     )
     expect(events).toEqual([{ type: 'process-stopped', data: { projectId: 'x' } }])
+  })
+
+  it('emits process-crashed for crashed projects', () => {
+    const events: Array<{ type: string; data: unknown }> = []
+    broadcastDiff(
+      { started: [], stopped: [], crashed: ['y'], portsAdded: [], portsRemoved: [] },
+      (e) => events.push(e),
+    )
+    expect(events).toEqual([{ type: 'process-crashed', data: { projectId: 'y' } }])
   })
 
   it('emits port-detected for added ports', () => {
@@ -352,6 +389,7 @@ describe('broadcastDiff', () => {
       {
         started: [],
         stopped: [],
+        crashed: [],
         portsAdded: [{ projectId: 'a', port: 3001 }],
         portsRemoved: [],
       },
@@ -362,27 +400,30 @@ describe('broadcastDiff', () => {
 
   it('emits nothing for empty diff', () => {
     const events: Array<{ type: string; data: unknown }> = []
-    broadcastDiff({ started: [], stopped: [], portsAdded: [], portsRemoved: [] }, (e) =>
-      events.push(e),
+    broadcastDiff(
+      { started: [], stopped: [], crashed: [], portsAdded: [], portsRemoved: [] },
+      (e) => events.push(e),
     )
     expect(events).toEqual([])
   })
 
-  it('emits events in order: started, stopped, port-detected', () => {
+  it('emits events in order: started, stopped, crashed, port-detected', () => {
     const events: Array<{ type: string; data: unknown }> = []
     broadcastDiff(
       {
         started: ['new'],
         stopped: ['old'],
+        crashed: ['dead'],
         portsAdded: [{ projectId: 'existing', port: 4000 }],
         portsRemoved: [{ projectId: 'existing', port: 3000 }],
       },
       (e) => events.push(e),
     )
-    expect(events).toHaveLength(3)
+    expect(events).toHaveLength(4)
     expect(events.map((e) => e.type)).toEqual([
       'process-started',
       'process-stopped',
+      'process-crashed',
       'port-detected',
     ])
   })
@@ -393,6 +434,7 @@ describe('broadcastDiff', () => {
       {
         started: [],
         stopped: [],
+        crashed: [],
         portsAdded: [],
         portsRemoved: [{ projectId: 'a', port: 3000 }],
       },
@@ -410,6 +452,8 @@ describe('BackgroundPoller onDiff callback', () => {
     poller = new BackgroundPoller()
     mockDetect.mockReset().mockResolvedValue({})
     mockProbe.mockReset().mockResolvedValue('http')
+    mockIsStopping.mockReset().mockReturnValue(false)
+    mockClearStopping.mockReset()
     clearPortTypeCache()
   })
 
@@ -510,6 +554,39 @@ describe('BackgroundPoller onDiff callback', () => {
 
     expect(diffs).toHaveLength(0)
   })
+
+  it('calls onDiff with crashed projects when stop flag is not set', async () => {
+    const diffs: Array<unknown> = []
+    poller.setOnDiff((diff) => diffs.push(diff))
+
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+    diffs.length = 0
+
+    mockDetect.mockResolvedValueOnce({})
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(diffs).toHaveLength(1)
+    expect(diffs[0]).toEqual(expect.objectContaining({ crashed: ['a'], stopped: [] }))
+  })
+
+  it('calls onDiff with stopped projects when stop flag is set', async () => {
+    const diffs: Array<unknown> = []
+    poller.setOnDiff((diff) => diffs.push(diff))
+
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+    diffs.length = 0
+
+    mockIsStopping.mockReturnValue(true)
+    mockDetect.mockResolvedValueOnce({})
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(diffs).toHaveLength(1)
+    expect(diffs[0]).toEqual(expect.objectContaining({ stopped: ['a'], crashed: [] }))
+  })
 })
 
 describe('BackgroundPoller port type cache', () => {
@@ -520,6 +597,8 @@ describe('BackgroundPoller port type cache', () => {
     poller = new BackgroundPoller()
     mockDetect.mockReset().mockResolvedValue({})
     mockProbe.mockReset().mockResolvedValue('http')
+    mockIsStopping.mockReset().mockReturnValue(false)
+    mockClearStopping.mockReset()
     clearPortTypeCache()
   })
 
