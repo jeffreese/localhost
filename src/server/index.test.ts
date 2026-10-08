@@ -11,6 +11,10 @@ class FakeChild extends EventEmitter {
 
 const mockActiveProcesses = new Map<string, FakeChild>()
 
+vi.mock('./log-store', () => ({
+  closeAll: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('./process-manager', () => ({
   getActiveProcesses: () => mockActiveProcesses,
   detectAllListeners: vi.fn().mockResolvedValue({}),
@@ -110,6 +114,8 @@ describe('gracefulShutdown', () => {
     mockActiveProcesses.set('p1', child as never)
 
     const shutdownPromise = gracefulShutdown()
+
+    await vi.advanceTimersByTimeAsync(0)
 
     expect(killSpy).toHaveBeenCalledWith(-5555, 'SIGTERM')
     expect(killSpy).not.toHaveBeenCalledWith(-5555, 'SIGKILL')

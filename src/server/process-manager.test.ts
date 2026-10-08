@@ -28,6 +28,11 @@ vi.mock('./config-store', () => ({
   }),
 }))
 
+vi.mock('./log-store', () => ({
+  appendLines: vi.fn().mockResolvedValue(undefined),
+  closeLogs: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('./listener-scanner', async (importOriginal) => {
   const original = await importOriginal<typeof import('./listener-scanner')>()
   return {
