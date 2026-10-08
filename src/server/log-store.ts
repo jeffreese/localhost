@@ -12,8 +12,9 @@ const fileHandles = new Map<string, FileHandle>()
 const writeLocks = new Map<string, Promise<void>>()
 
 function safeFilename(projectId: string): string {
-  if (projectId.length === 0) throw new Error('Empty project ID')
-  return projectId.replace(/[/\\]/g, '_').replace(/^\.+/, '')
+  const result = projectId.replace(/[/\\]/g, '_').replace(/^\.+/, '')
+  if (result.length === 0) throw new Error('Empty project ID')
+  return result
 }
 
 function logPath(projectId: string): string {
@@ -83,8 +84,10 @@ const LINE_PATTERN = /^\[(\S+) (stdout|stderr)] (.*)$/
 function parseLine(raw: string): LogLine | null {
   const match = LINE_PATTERN.exec(raw)
   if (!match) return null
+  const ts = new Date(match[1]).getTime()
+  if (Number.isNaN(ts)) return null
   return {
-    ts: new Date(match[1]).getTime(),
+    ts,
     stream: match[2] as 'stdout' | 'stderr',
     text: match[3],
   }

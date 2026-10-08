@@ -105,6 +105,12 @@ describe('log-store', () => {
     await expect(appendLines('', lines)).rejects.toThrow('Empty project ID')
   })
 
+  it('rejects dots-only project IDs that sanitize to empty', async () => {
+    const lines: LogLine[] = [{ stream: 'stdout', ts: 1000, text: 'hi' }]
+    await expect(appendLines('..', lines)).rejects.toThrow('Empty project ID')
+    await expect(appendLines('...', lines)).rejects.toThrow('Empty project ID')
+  })
+
   it('sanitizes path-based project IDs into safe filenames', async () => {
     const lines: LogLine[] = [{ stream: 'stdout', ts: 1000, text: 'hi' }]
     await appendLines('/Users/jeff/Code/my-app', lines)

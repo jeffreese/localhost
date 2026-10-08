@@ -150,4 +150,14 @@ describe('ConsoleStore', () => {
     expect(listener).toHaveBeenCalled()
     expect(listener.mock.calls.length).toBeGreaterThanOrEqual(3)
   })
+
+  it('falls back to empty array when fetch returns non-ok response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500 })),
+    )
+    await ConsoleStore.open('err-proj')
+
+    expect(ConsoleStore.getLines('err-proj')).toEqual([])
+  })
 })
