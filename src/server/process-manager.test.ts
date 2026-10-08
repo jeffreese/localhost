@@ -370,6 +370,9 @@ describe('process-manager', () => {
         'p1',
         expect.arrayContaining([expect.objectContaining({ text: 'no-newline-tail' })]),
       )
+      await vi.waitFor(() => {
+        expect(mockCloseLogs).toHaveBeenCalledWith('p1')
+      })
     })
 
     it('closes log file on process exit after flushing tail', async () => {
