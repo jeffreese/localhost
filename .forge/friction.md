@@ -49,3 +49,8 @@
 **Friction:** Crucible required 3 rounds — R1: handleProcessCrashed and handleProcessStarted missing healthStatus clear, missing test for crash clearing, routes.test.ts missing healthStatus assertions. R2: missing test for healthStatus cleared on process-started.
 **Root cause:** Added healthStatus to Project type and updated several consumers but missed 2 of 4 SSE handlers that spread Project objects. Despite the api-shape-change-missing-consumer-update rule and pre-implementation watch list flagging this exact pattern, the sweep was incomplete — stopped was updated but crashed and started were missed. 5th occurrence.
 **Category:** crucible-rework
+
+## 2026-10-08 — feat/health-check-interval-override
+**Friction:** Crucible required 3 rounds — R1: stale health indicator in UI after disabling via PATCH (no SSE event to clear dot), DiffCallback type not reflecting async contract. R2: missing test for health-changed with null status in project-store.
+**Root cause:** R1 findings were genuine omissions in the new disable path (broadcasting the state change to the client) and a type that drifted when the callback became async. R2 was the 6th occurrence of api-shape-change-missing-consumer-update — type updated to accept null but no test validated it.
+**Category:** crucible-rework
