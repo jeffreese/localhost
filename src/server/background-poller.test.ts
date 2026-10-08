@@ -141,6 +141,68 @@ describe('BackgroundPoller', () => {
   it('returns null diff before first tick', () => {
     expect(poller.getLastDiff()).toBeNull()
   })
+
+  it('getPreviousListeners returns a clone that does not affect internal state', async () => {
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    const returned = poller.getPreviousListeners()
+    returned.a.push({ pid: 99, port: 9999 })
+
+    expect(poller.getPreviousListeners()).toEqual({ a: [{ pid: 1, port: 3000 }] })
+  })
+
+  it('getLastDiff returns a clone that does not affect internal state', async () => {
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    const returned = poller.getLastDiff()
+    if (!returned) throw new Error('expected diff')
+    returned.started.push('injected')
+
+    expect(poller.getLastDiff()?.started).toEqual(['a'])
+  })
+
+  it('tracks project lifecycle across multiple ticks', async () => {
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    const diff1 = poller.getLastDiff()
+    if (!diff1) throw new Error('expected diff')
+    expect(diff1.started).toEqual(['a'])
+
+    mockDetect.mockResolvedValueOnce({})
+    await vi.advanceTimersByTimeAsync(100)
+
+    const diff2 = poller.getLastDiff()
+    if (!diff2) throw new Error('expected diff')
+    expect(diff2.stopped).toEqual(['a'])
+  })
+
+  it('overlap guard clears after multiple skipped ticks', async () => {
+    let resolveFirst!: () => void
+    mockDetect.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = () => resolve({})
+        }),
+    )
+
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(mockDetect).toHaveBeenCalledTimes(1)
+
+    resolveFirst()
+    await vi.advanceTimersByTimeAsync(0)
+
+    await vi.advanceTimersByTimeAsync(100)
+    expect(mockDetect).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('diffListeners', () => {
@@ -228,6 +290,26 @@ describe('diffListeners', () => {
     expect(diff.started).toEqual([])
     expect(diff.stopped).toEqual([])
     expect(diff.portsAdded).toEqual([{ projectId: 'a', port: 4000 }])
+    expect(diff.portsRemoved).toEqual([{ projectId: 'a', port: 3000 }])
+  })
+
+  it('treats project with empty listeners as present (not started/stopped)', () => {
+    const diff = diffListeners({ a: [] }, { a: [] })
+    expect(diff.started).toEqual([])
+    expect(diff.stopped).toEqual([])
+    expect(diff.portsAdded).toEqual([])
+    expect(diff.portsRemoved).toEqual([])
+  })
+
+  it('detects ports added to previously empty project', () => {
+    const diff = diffListeners({ a: [] }, { a: [{ pid: 1, port: 3000 }] })
+    expect(diff.started).toEqual([])
+    expect(diff.portsAdded).toEqual([{ projectId: 'a', port: 3000 }])
+  })
+
+  it('detects all ports removed from existing project', () => {
+    const diff = diffListeners({ a: [{ pid: 1, port: 3000 }] }, { a: [] })
+    expect(diff.stopped).toEqual([])
     expect(diff.portsRemoved).toEqual([{ projectId: 'a', port: 3000 }])
   })
 })

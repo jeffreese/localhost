@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { __addClient, __clearClients, __resetEventId, broadcast, getEventId } from './sse'
+import {
+  __addClient,
+  __clearClients,
+  __resetEventId,
+  broadcast,
+  getClientCount,
+  getEventId,
+} from './sse'
 
 describe('SSE event IDs', () => {
   beforeEach(() => {
@@ -62,5 +69,43 @@ describe('SSE event IDs', () => {
 
     remove1()
     remove2()
+  })
+
+  it('getClientCount reflects registered clients', () => {
+    expect(getClientCount()).toBe(0)
+
+    const remove1 = __addClient({ send: vi.fn() })
+    expect(getClientCount()).toBe(1)
+
+    const remove2 = __addClient({ send: vi.fn() })
+    expect(getClientCount()).toBe(2)
+
+    remove1()
+    expect(getClientCount()).toBe(1)
+
+    remove2()
+    expect(getClientCount()).toBe(0)
+  })
+
+  it('removed client does not receive subsequent broadcasts', () => {
+    const send = vi.fn()
+    const remove = __addClient({ send })
+
+    broadcast({ type: 'process-started', data: { projectId: 'a' } })
+    expect(send).toHaveBeenCalledTimes(1)
+
+    remove()
+
+    broadcast({ type: 'process-stopped', data: { projectId: 'b' } })
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('__clearClients removes all clients', () => {
+    __addClient({ send: vi.fn() })
+    __addClient({ send: vi.fn() })
+    expect(getClientCount()).toBe(2)
+
+    __clearClients()
+    expect(getClientCount()).toBe(0)
   })
 })
