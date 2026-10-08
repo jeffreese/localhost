@@ -8,6 +8,7 @@ const logsByProject = new Map<string, LogLine[]>()
 let openProjectId: string | null = null
 let hydrationBuffer: LogLine[] | null = null
 let hydrationProjectId: string | null = null
+let hydrationHistoryInvalidated = false
 
 const MAX_LINES = 500
 
@@ -49,6 +50,7 @@ function handleProcessStarted(data: unknown) {
 
   if (hydrationBuffer !== null && projectId === hydrationProjectId) {
     hydrationBuffer.length = 0
+    hydrationHistoryInvalidated = true
     return
   }
 
@@ -79,6 +81,7 @@ export const ConsoleStore = {
 
     hydrationBuffer = []
     hydrationProjectId = projectId
+    hydrationHistoryInvalidated = false
 
     let history: LogLine[] = []
     try {
@@ -91,9 +94,17 @@ export const ConsoleStore = {
     }
 
     if (openProjectId !== projectId) {
-      hydrationBuffer = null
-      hydrationProjectId = null
+      if (hydrationProjectId === projectId) {
+        hydrationBuffer = null
+        hydrationProjectId = null
+        hydrationHistoryInvalidated = false
+      }
       return
+    }
+
+    if (hydrationHistoryInvalidated) {
+      history = []
+      hydrationHistoryInvalidated = false
     }
 
     const merged = truncate(history.concat(hydrationBuffer))
@@ -127,6 +138,7 @@ export const ConsoleStore = {
     openProjectId = null
     hydrationBuffer = null
     hydrationProjectId = null
+    hydrationHistoryInvalidated = false
     listeners.clear()
   },
 }
