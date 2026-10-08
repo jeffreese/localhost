@@ -35,6 +35,19 @@ function handleProcessStopped(data: unknown) {
   notify()
 }
 
+function notifyCrash(projectId: string, exitCode: number | null, signal: string | null) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+  const project = projects.find((p) => p.id === projectId)
+  const name = project?.name ?? projectId
+  const details: string[] = []
+  if (exitCode !== null) details.push(`exit ${exitCode}`)
+  if (signal) details.push(signal)
+  new Notification(`${name} crashed`, {
+    body: details.length > 0 ? details.join(' · ') : 'Process exited unexpectedly',
+    tag: `crash-${projectId}`,
+  })
+}
+
 function handleProcessCrashed(data: unknown) {
   const { projectId, exitCode, signal, timestamp } = data as CrashInfo & { projectId: string }
   projects = projects.map((p) =>
@@ -48,6 +61,7 @@ function handleProcessCrashed(data: unknown) {
       : p,
   )
   notify()
+  notifyCrash(projectId, exitCode, signal)
 }
 
 function handlePortDetected(data: unknown) {
@@ -95,6 +109,9 @@ export const ProjectStore = {
     on('process-crashed', handleProcessCrashed)
     on('port-detected', handlePortDetected)
     on('project-updated', handleProjectUpdated)
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
   },
 
   destroy() {
