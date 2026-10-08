@@ -1,22 +1,27 @@
 # Session Context
 
 ## What's next
-- Task 3.7: Integration tests for process group lifecycle — group kill, PID verification, shutdown cleanup, stale PID pruning.
+- Epic 6: Log Persistence — task 6.2: Wire process-manager stdout/stderr to both ring buffer and log-store
+- Tasks 6.3–6.6 follow (rotation wiring, disk pagination, hydration race fix, tests)
 
 ## Key constraints (carried forward)
-- `startProject` spawns with `detached: true`, `stdio: ['ignore', 'pipe', 'pipe']`. PGID = child PID via setsid().
-- `stopProject` sends group signals with PID verification on stored-PID path. Active-child path skips verification (holds ChildProcess reference directly).
-- Single exit handler per child — registered in `startProject`, handles log flushing, activeProcesses cleanup, and config.pids removal. `stopProject` only adds timeout + resolve handler.
-- `verifyPid(pid, expectedPath)` exported from process-manager.ts — alive check + cwd match via lsof.
-- `cleanupStalePids()` exported from process-manager.ts — iterates config.pids on startup, removes stale entries.
-- Shutdown handlers in index.ts: SIGTERM/SIGINT → gracefulShutdown, exit → sync SIGKILL sweep.
 - Config store fully hardened (Epic 2): atomic writes, serialized queue, cached with structuredClone boundaries.
+- Process group lifecycle complete (Epic 3).
+- Port override complete (Epic 13).
+- Background polling complete (Epic 5): 5s interval, overlap guard, listener diff → SSE broadcast, monotonic event IDs.
+- Fire-and-forget promises need `.catch()` — project rule.
+- Cache clone boundaries: all getters/callbacks returning internal state must use structuredClone.
 
 ## Judgment calls this session
-- Task 3.6 fix was minimal: removed duplicate cleanup (activeProcesses.delete + updateConfig) from stopProject's exit handler, leaving only clearTimeout + resolve. startProject's handler already covers cleanup.
+- Log store uses `mkdir(LOG_DIR, { recursive: true })` on every `getHandle` call instead of a `dirEnsured` flag — avoids test isolation race where config-store tests delete the shared `.localhost` parent.
+- Test isolation: log-store tests use `mkdtempSync` for a unique temp home, not the shared `tmpdir()/.localhost` that config-store tests clean.
+- `rotateIfNeeded` uses `stat(path)` on the disk path (not `fstat` on handle) and closes the handle before renaming — simple, correct for the append-only pattern.
+- `__resetLogStore` only clears the handle map — no `dirEnsured` flag to reset.
 
 ## Watch for
-- Task 3.7: integration tests need to cover the single-exit-handler guarantee — verify updateConfig called exactly once on stop.
-- Fire-and-forget promises need `.catch()` — project rule (behavior-catch-fire-and-forget.md).
-- readConfig mocks must use structuredClone (behavior-cache-clone-boundaries.md).
-- EPERM vs ESRCH: cover both error codes as distinct test scenarios.
+- `mutable-cache-reference` (4 occurrences) — any new getter, callback, or return path from a cached module needs structuredClone
+- `untested-delivery-path` — when testing fan-out functions, register at least one mock consumer
+- 6.2 wiring: `appendLines` must be called alongside the existing `appendLogLines` in process-manager's `handleChunk` and exit handler — both paths need the log-store call
+- 6.2 wiring: `closeLogs` should be called on process exit (after flushing tail lines) and in server shutdown
+- Log rotation (6.3) needs to be checked before each write batch — or at process start
+- Console hydration race (6.5) is the trickiest task — SSE events arriving during initial fetch must be buffered and merged
