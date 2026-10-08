@@ -10,6 +10,9 @@ export type Visibility = 'visible' | 'hidden' | 'ignored'
 /** Port type determined by HTTP HEAD probe */
 export type PortType = 'http' | 'tcp'
 
+/** Health check status for a running service */
+export type HealthStatus = 'healthy' | 'unhealthy' | 'unknown'
+
 /** A TCP listener matched to a project by working directory */
 export interface Listener {
   pid: number
