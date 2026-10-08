@@ -31,6 +31,7 @@ vi.mock('./sse', async (importOriginal) => {
 const { gracefulShutdown, killAllProcessGroups, __resetShutdownState, poller } = await import(
   './index'
 )
+import { closeAll as mockCloseAll } from './log-store'
 import { broadcast } from './sse'
 
 const mockBroadcast = vi.mocked(broadcast)
@@ -117,6 +118,7 @@ describe('gracefulShutdown', () => {
 
     await vi.advanceTimersByTimeAsync(0)
 
+    expect(mockCloseAll).toHaveBeenCalledTimes(1)
     expect(killSpy).toHaveBeenCalledWith(-5555, 'SIGTERM')
     expect(killSpy).not.toHaveBeenCalledWith(-5555, 'SIGKILL')
 

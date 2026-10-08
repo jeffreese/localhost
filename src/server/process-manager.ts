@@ -182,16 +182,22 @@ export async function startProject(
     }
     if (tailLines.length > 0) {
       appendLogLines(projectId, tailLines)
-      appendToLogFile(projectId, tailLines).catch((err) =>
-        console.error(`Log file write failed for ${projectId}:`, err),
-      )
       pendingBatch.push(...tailLines)
     }
     flushBatch()
 
-    closeLogs(projectId).catch((err) =>
-      console.error(`Log file close failed for ${projectId}:`, err),
-    )
+    const closeLogFile = () =>
+      closeLogs(projectId).catch((err) =>
+        console.error(`Log file close failed for ${projectId}:`, err),
+      )
+
+    if (tailLines.length > 0) {
+      appendToLogFile(projectId, tailLines)
+        .catch((err) => console.error(`Log file write failed for ${projectId}:`, err))
+        .finally(closeLogFile)
+    } else {
+      closeLogFile()
+    }
 
     activeProcesses.delete(projectId)
     updateConfig((config) => {

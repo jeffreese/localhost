@@ -72,6 +72,8 @@ const {
   __resetActiveProcesses,
 } = await import('./process-manager')
 
+const { appendLines: mockAppendLines, closeLogs: mockCloseLogs } = await import('./log-store')
+
 function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
   storedConfig = {
     scanRoot: '/tmp/Code',
@@ -324,6 +326,8 @@ describe('process-manager', () => {
       fakeChild = new FakeChild()
       spawnMock.mockReset()
       spawnMock.mockReturnValue(fakeChild)
+      vi.mocked(mockAppendLines).mockClear()
+      vi.mocked(mockCloseLogs).mockClear()
       resetConfig()
     })
 
@@ -335,6 +339,13 @@ describe('process-manager', () => {
       expect(logs.map((l) => l.text)).toEqual(['line one', 'line two'])
       expect(logs.every((l) => l.stream === 'stdout')).toBe(true)
       expect(hasLogs('p1')).toBe(true)
+      expect(mockAppendLines).toHaveBeenCalledWith(
+        'p1',
+        expect.arrayContaining([
+          expect.objectContaining({ stream: 'stdout', text: 'line one' }),
+          expect.objectContaining({ stream: 'stdout', text: 'line two' }),
+        ]),
+      )
     })
 
     it('caps the buffer at 500 lines, dropping the oldest', async () => {
@@ -355,6 +366,20 @@ describe('process-manager', () => {
 
       const logs = getLogs('p1')
       expect(logs.map((l) => l.text)).toEqual(['complete', 'no-newline-tail'])
+      expect(mockAppendLines).toHaveBeenLastCalledWith(
+        'p1',
+        expect.arrayContaining([expect.objectContaining({ text: 'no-newline-tail' })]),
+      )
+    })
+
+    it('closes log file on process exit after flushing tail', async () => {
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+      fakeChild.stdout.emit('data', Buffer.from('output\n'))
+      fakeChild.emit('exit', 0, null)
+
+      await vi.waitFor(() => {
+        expect(mockCloseLogs).toHaveBeenCalledWith('p1')
+      })
     })
 
     it('retains the buffer after the process exits', async () => {
