@@ -102,6 +102,10 @@ export const ConsoleStore = {
       return
     }
 
+    if (hydrationBuffer === null) {
+      return
+    }
+
     if (hydrationHistoryInvalidated) {
       history = []
       hydrationHistoryInvalidated = false

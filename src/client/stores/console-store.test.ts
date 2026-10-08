@@ -287,6 +287,43 @@ describe('ConsoleStore', () => {
       expect(result[result.length - 1].text).toBe('l-39')
     })
 
+    it('same-project double-open does not corrupt buffer', async () => {
+      let resolveFirst!: () => void
+      let resolveSecond!: () => void
+      const firstFetch = new Promise<void>((r) => {
+        resolveFirst = r
+      })
+      const secondFetch = new Promise<void>((r) => {
+        resolveSecond = r
+      })
+
+      let callCount = 0
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => {
+          callCount++
+          const p = callCount === 1 ? firstFetch : secondFetch
+          const data = callCount === 1 ? { lines: [line('stale')] } : { lines: [line('fresh')] }
+          return p.then(() => ({ ok: true, json: async () => data }))
+        }),
+      )
+
+      const open1 = ConsoleStore.open('p1')
+      const open2 = ConsoleStore.open('p1')
+
+      dispatchSSE('log', { projectId: 'p1', lines: [line('live')] })
+
+      resolveFirst()
+      await open1
+
+      resolveSecond()
+      await open2
+
+      const result = ConsoleStore.getLines('p1')
+      expect(result.every((l) => l !== null)).toBe(true)
+      expect(result.map((l) => l.text)).toEqual(['stale', 'live'])
+    })
+
     it('ignores SSE events for other projects during hydration', async () => {
       const resolve = deferredFetch({ lines: [line('p1-disk')] })
 
