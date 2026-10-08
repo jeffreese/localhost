@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "generated": "2026-10-07",
+  "generated": "2026-10-08",
   "plugin_versions": {
-    "forge": "3.3.0",
+    "forge": "3.4.0",
     "crucible": "0.2.0"
   },
   "gates": [
@@ -38,7 +38,7 @@
     },
     {
       "id": "doc-count-verification",
-      "instruction": "When writing a number into a markdown file that claims to count something (methods, tests, properties, branches, fields, hooks, steps), grep the source and verify the count before the write completes.",
+      "instruction": "When writing a number into a markdown file that claims to count something (methods, tests, properties, branches, fields, hooks, steps), grep the source and verify the count before the write completes. When writing a list that reads as complete ('all callers', 'covers steps 1-5', 'every hook'), count against the source of truth. If the count can't be verified mechanically, qualify it ('as of v1.2', 'not exhaustive').",
       "triggers": ["next"],
       "severity": "block"
     },

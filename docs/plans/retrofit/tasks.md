@@ -82,7 +82,7 @@ date: 2026-10-05
 
 ## Epic 9: Health Checks
 
-- [ ] 9.1 Create `health-checker.ts`: per-project setInterval timers, HTTP HEAD with 3s timeout, track consecutive failures.
+- [x] 9.1 Create `health-checker.ts`: per-project setInterval timers, HTTP HEAD with 3s timeout, track consecutive failures.
 - [ ] 9.2 Auto-start health checks when service starts, stop when it stops.
 - [ ] 9.3 Broadcast `health-changed` SSE event on status transitions.
 - [ ] 9.4 Add `GET /api/health` endpoint.
