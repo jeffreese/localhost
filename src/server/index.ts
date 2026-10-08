@@ -16,6 +16,7 @@ app.route('/api', api)
 export const port = 7769
 
 const poller = new BackgroundPoller()
+/** Exported for SSE broadcast wiring (task 9.3) and health API endpoint (task 9.4). */
 const healthChecker = new HealthChecker()
 
 poller.setOnDiff((diff, currentListeners) => {
@@ -28,6 +29,12 @@ poller.setOnDiff((diff, currentListeners) => {
       if (httpPort) {
         healthChecker.startChecking(projectId, httpPort)
       }
+    }
+  }
+
+  for (const { projectId } of diff.portsRemoved) {
+    if (healthChecker.isChecking(projectId)) {
+      healthChecker.stopChecking(projectId)
     }
   }
 

@@ -258,6 +258,66 @@ describe('poller lifecycle', () => {
     vi.useRealTimers()
   })
 
+  it('starts health checking when a running project gains an HTTP port', async () => {
+    vi.useFakeTimers()
+    const { detectAllListeners } = await import('./process-manager')
+    const mockDetect = vi.mocked(detectAllListeners)
+    const { probePort } = await import('./port-probe')
+    const mockProbe = vi.mocked(probePort)
+    mockPortTypeCache.clear()
+
+    mockDetect.mockResolvedValueOnce({})
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    mockProbe.mockResolvedValue('tcp' as import('@shared/types').PortType)
+    mockDetect.mockResolvedValueOnce({ myApp: [{ pid: 1, port: 5432 }] })
+    await vi.advanceTimersByTimeAsync(100)
+    vi.mocked(healthChecker.startChecking).mockClear()
+
+    mockProbe.mockResolvedValue('http' as import('@shared/types').PortType)
+    mockDetect.mockResolvedValueOnce({
+      myApp: [
+        { pid: 1, port: 5432 },
+        { pid: 2, port: 3000 },
+      ],
+    })
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(healthChecker.startChecking).toHaveBeenCalledWith('myApp', 3000)
+
+    poller.stop()
+    mockPortTypeCache.clear()
+    vi.useRealTimers()
+  })
+
+  it('restarts health checking when port changes', async () => {
+    vi.useFakeTimers()
+    const { detectAllListeners } = await import('./process-manager')
+    const mockDetect = vi.mocked(detectAllListeners)
+    mockPortTypeCache.clear()
+
+    mockDetect.mockResolvedValueOnce({})
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    mockDetect.mockResolvedValueOnce({ myApp: [{ pid: 1, port: 3000 }] })
+    await vi.advanceTimersByTimeAsync(100)
+    vi.mocked(healthChecker.startChecking).mockClear()
+    vi.mocked(healthChecker.stopChecking).mockClear()
+    vi.mocked(healthChecker.isChecking).mockReturnValue(true)
+
+    mockDetect.mockResolvedValueOnce({ myApp: [{ pid: 1, port: 4000 }] })
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(healthChecker.stopChecking).toHaveBeenCalledWith('myApp')
+    vi.mocked(healthChecker.isChecking).mockReturnValue(false)
+
+    poller.stop()
+    mockPortTypeCache.clear()
+    vi.useRealTimers()
+  })
+
   it('stops health checking when project stops', async () => {
     vi.useFakeTimers()
     const { detectAllListeners, isStopping } = await import('./process-manager')
