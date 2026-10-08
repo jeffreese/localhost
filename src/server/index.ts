@@ -19,6 +19,10 @@ const poller = new BackgroundPoller()
 /** Exported for SSE broadcast wiring (task 9.3) and health API endpoint (task 9.4). */
 const healthChecker = new HealthChecker()
 
+healthChecker.setOnChange((projectId, status, responseTime) => {
+  broadcast({ type: 'health-changed', data: { projectId, status, responseTime } })
+})
+
 poller.setOnDiff((diff, currentListeners) => {
   broadcastDiff(diff, broadcast)
 

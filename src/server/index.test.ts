@@ -40,13 +40,19 @@ vi.mock('./sse', async (importOriginal) => {
   }
 })
 
+const { capturedOnChangeRef } = vi.hoisted(() => {
+  const capturedOnChangeRef: { current: ((...args: unknown[]) => void) | null } = { current: null }
+  return { capturedOnChangeRef }
+})
 vi.mock('./health-checker', () => {
   const mockChecker = {
     startChecking: vi.fn(),
     stopChecking: vi.fn(),
     stopAll: vi.fn(),
     isChecking: vi.fn().mockReturnValue(false),
-    setOnChange: vi.fn(),
+    setOnChange: vi.fn((cb: (...args: unknown[]) => void) => {
+      capturedOnChangeRef.current = cb
+    }),
     getStatus: vi.fn().mockReturnValue(null),
     getAllStatuses: vi.fn().mockReturnValue({}),
   }
@@ -388,5 +394,28 @@ describe('poller lifecycle', () => {
 
     exitSpy.mockRestore()
     vi.useRealTimers()
+  })
+
+  it('broadcasts health-changed SSE event on status transition', () => {
+    expect(capturedOnChangeRef.current).not.toBeNull()
+    mockBroadcast.mockClear()
+
+    capturedOnChangeRef.current?.('myApp', 'healthy', 42)
+
+    expect(mockBroadcast).toHaveBeenCalledWith({
+      type: 'health-changed',
+      data: { projectId: 'myApp', status: 'healthy', responseTime: 42 },
+    })
+  })
+
+  it('broadcasts health-changed with null responseTime', () => {
+    mockBroadcast.mockClear()
+
+    capturedOnChangeRef.current?.('myApp', 'unhealthy', null)
+
+    expect(mockBroadcast).toHaveBeenCalledWith({
+      type: 'health-changed',
+      data: { projectId: 'myApp', status: 'unhealthy', responseTime: null },
+    })
   })
 })
