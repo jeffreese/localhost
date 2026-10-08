@@ -24,7 +24,7 @@ Bug patterns discovered during development. The `/crucible:review` agent checks 
 **Fix:** Un-export functions that became internal implementation details, or clearly document that the behavior is now automatic.
 
 ## api-shape-change-missing-consumer-update
-**Occurrences:** 6 (PR #40, PR #44, PR #47, PR #53, PR #55, PR #56)
+**Occurrences:** 7 (PR #40, PR #44, PR #47, PR #53, PR #55, PR #56, PR #57)
 **Pattern:** Changing a server API response shape (e.g., LogLine[] → {lines, hasMore}) without updating all client consumers. Mocked tests pass because the mock returns the old shape; the real response shape mismatch only surfaces at runtime. Destructuring the wrong shape yields undefined, which propagates silently.
 **Fix:** When changing an API response shape, grep for all fetch/import consumers of that endpoint. Update mocks to return the new shape. Add an integration-style test that uses the real (unmocked) endpoint if possible.
 **Status:** promoted to rule (behavior-consumer-update-on-shape-change.md)
@@ -48,6 +48,11 @@ Bug patterns discovered during development. The `/crucible:review` agent checks 
 **Occurrences:** 3 (PR #39, PR #41, PR #51)
 **Pattern:** An async function that reads shared state, acts on it, then mutates it (stat → close → rename) is called fire-and-forget from event handlers. Without per-key serialization, concurrent calls for the same key observe the same pre-mutation state and both execute the mutation, corrupting the result. Classic TOCTOU in async code.
 **Fix:** Per-key promise chain or async mutex wrapping the read-act-mutate sequence. The lock must be per-key (e.g., per project name) to avoid unnecessary contention.
+
+## behavior-clone-in-loop
+**Occurrences:** 1 (PR #57)
+**Pattern:** Calling a function that deep-clones its result (e.g., `structuredClone` on a cache boundary) inside a `.map()` loop. Each iteration pays the full clone cost for data it only needs a single entry from. The pattern is invisible when the cloned function looks cheap (like `getStatus` which does a shallow spread) but expensive when the function clones a full map (like `getResourceUsage` which deep-clones all entries).
+**Fix:** Hoist the cloning call outside the loop and pass the pre-fetched result as a parameter, or add a per-key accessor that clones only the requested entry.
 
 ## deferred-cleanup-unreachable-consumer
 **Occurrences:** 2 (PR #45, PR #46)

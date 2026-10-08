@@ -54,3 +54,8 @@
 **Friction:** Crucible required 3 rounds — R1: stale health indicator in UI after disabling via PATCH (no SSE event to clear dot), DiffCallback type not reflecting async contract. R2: missing test for health-changed with null status in project-store.
 **Root cause:** R1 findings were genuine omissions in the new disable path (broadcasting the state change to the client) and a type that drifted when the callback became async. R2 was the 6th occurrence of api-shape-change-missing-consumer-update — type updated to accept null but no test validated it.
 **Category:** crucible-rework
+
+## 2026-10-08 — feat/resource-sampling
+**Friction:** Crucible required 2 rounds — R1: N+1 structuredClone in buildProjectResponse (getResourceUsage() called per project inside .map()), missing test for populated /api/resources response.
+**Root cause:** The getResourceUsage() call was placed inside buildProjectResponse following the same pattern as healthChecker.getStatus() — but getStatus does a cheap shallow spread while getResourceUsage does a full structuredClone. The pattern match was wrong. The missing test is the 7th occurrence of the api-shape-change-missing-consumer-update pattern family — new endpoint with only an empty-state test.
+**Category:** crucible-rework
