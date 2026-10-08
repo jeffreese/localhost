@@ -77,7 +77,7 @@ date: 2026-10-05
 - [x] 8.2 Capture exit code/signal from child `exit` event for Localhost-spawned processes, broadcast `process-crashed`.
 - [x] 8.3 Store crash info in `config.crashes[projectId]`. Clear on next start.
 - [x] 8.4 Add `process-crashed` SSE event type.
-- [ ] 8.5 Update `<lh-project-card>`: crash indicator with timestamp and exit info.
+- [x] 8.5 Update `<lh-project-card>`: crash indicator with timestamp and exit info.
 - [ ] 8.6 Desktop notification via Notification API on crash (nice-to-have).
 
 ## Epic 9: Health Checks
