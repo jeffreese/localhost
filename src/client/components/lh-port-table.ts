@@ -1,10 +1,11 @@
-import type { Project } from '@shared/types'
+import type { PortType, Project } from '@shared/types'
 import { LitElement, html } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 
 interface PortEntry {
   port: number
   projectName: string
+  portType?: PortType
 }
 
 @customElement('lh-port-table')
@@ -19,7 +20,7 @@ export class LhPortTable extends LitElement {
     const entries: PortEntry[] = []
     for (const p of this.projects) {
       for (const l of p.listeners) {
-        entries.push({ port: l.port, projectName: p.name })
+        entries.push({ port: l.port, projectName: p.name, portType: l.portType })
       }
     }
     return entries.sort((a, b) => a.port - b.port)
@@ -36,6 +37,7 @@ export class LhPortTable extends LitElement {
           <thead>
             <tr class="text-left text-muted text-xs">
               <th class="pb-xs">Port</th>
+              <th class="pb-xs">Type</th>
               <th class="pb-xs">Project</th>
             </tr>
           </thead>
@@ -43,7 +45,17 @@ export class LhPortTable extends LitElement {
             ${entries.map(
               (e) => html`
                 <tr class="border-t border-border">
-                  <td class="py-xs text-accent font-mono">:${e.port}</td>
+                  <td class="py-xs font-mono">${
+                    e.portType === 'tcp'
+                      ? html`<span class="text-muted">:${e.port}</span>`
+                      : html`<a
+                          href="http://localhost:${e.port}"
+                          target="_blank"
+                          rel="noopener"
+                          class="text-accent hover:underline"
+                        >:${e.port}</a>`
+                  }</td>
+                  <td class="py-xs text-secondary text-xs">${e.portType ?? '—'}</td>
                   <td class="py-xs text-primary">${e.projectName}</td>
                 </tr>
               `,

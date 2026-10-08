@@ -20,6 +20,14 @@ vi.mock('./process-manager', () => ({
   detectAllListeners: vi.fn().mockResolvedValue({}),
 }))
 
+vi.mock('./port-probe', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./port-probe')>()
+  return {
+    ...actual,
+    probePort: vi.fn().mockResolvedValue('http'),
+  }
+})
+
 vi.mock('./sse', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./sse')>()
   return {

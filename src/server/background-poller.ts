@@ -1,4 +1,5 @@
-import type { Listener } from '@shared/types'
+import type { Listener, PortType } from '@shared/types'
+import { deletePortType, getPortType, probePort, setPortType } from './port-probe'
 import { detectAllListeners } from './process-manager'
 
 export type ListenerMap = Record<string, Listener[]>
@@ -52,7 +53,7 @@ export type DiffCallback = (diff: ListenerDiff) => void
 export type PollerEvent =
   | { type: 'process-started'; data: { projectId: string } }
   | { type: 'process-stopped'; data: { projectId: string } }
-  | { type: 'port-detected'; data: { projectId: string; port: number } }
+  | { type: 'port-detected'; data: { projectId: string; port: number; portType?: PortType } }
 
 export function broadcastDiff(diff: ListenerDiff, emit: (event: PollerEvent) => void) {
   for (const projectId of diff.started) {
@@ -62,7 +63,7 @@ export function broadcastDiff(diff: ListenerDiff, emit: (event: PollerEvent) => 
     emit({ type: 'process-stopped', data: { projectId } })
   }
   for (const { projectId, port } of diff.portsAdded) {
-    emit({ type: 'port-detected', data: { projectId, port } })
+    emit({ type: 'port-detected', data: { projectId, port, portType: getPortType(port) } })
   }
 }
 
@@ -73,7 +74,6 @@ export class BackgroundPoller {
   private previousListeners: ListenerMap = {}
   private lastDiff: ListenerDiff | null = null
   private onDiff: DiffCallback | null = null
-
   setOnDiff(callback: DiffCallback) {
     this.onDiff = callback
   }
@@ -116,9 +116,47 @@ export class BackgroundPoller {
     try {
       this.tickCount++
       const current = await detectAllListeners()
-      const diff = diffListeners(this.previousListeners, current)
+      const previous = this.previousListeners
+      const diff = diffListeners(previous, current)
       this.lastDiff = diff
       this.previousListeners = current
+      for (const { port } of diff.portsRemoved) {
+        deletePortType(port)
+      }
+      for (const projectId of diff.stopped) {
+        const prevListeners = previous[projectId]
+        if (prevListeners) {
+          for (const { port } of prevListeners) {
+            deletePortType(port)
+          }
+        }
+      }
+
+      const newPorts: Array<{ port: number }> = []
+      for (const { port } of diff.portsAdded) {
+        newPorts.push({ port })
+      }
+      for (const projectId of diff.started) {
+        const listeners = current[projectId]
+        if (listeners) {
+          for (const { port } of listeners) {
+            newPorts.push({ port })
+          }
+        }
+      }
+      const portsToProbe = newPorts.filter(({ port }) => !getPortType(port))
+      if (portsToProbe.length > 0) {
+        const probes = portsToProbe.map(async ({ port }) => {
+          try {
+            const type = await probePort(port)
+            setPortType(port, type)
+          } catch (err) {
+            console.error(`[BackgroundPoller] probe port ${port} error:`, err)
+          }
+        })
+        await Promise.all(probes)
+      }
+
       const hasChanges =
         diff.started.length > 0 || diff.stopped.length > 0 || diff.portsAdded.length > 0
       if (this.onDiff && hasChanges) {

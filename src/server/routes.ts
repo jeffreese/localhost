@@ -2,6 +2,7 @@ import type { Listener, LocalhostConfig, Project, ProjectCache, Visibility } fro
 import { Hono } from 'hono'
 import { readConfig, updateConfig } from './config-store'
 import { readLines } from './log-store'
+import { getPortType } from './port-probe'
 import {
   detectAllListeners,
   hasLogs,
@@ -23,11 +24,15 @@ function buildProjectResponse(
     : config.hidden.includes(id)
       ? 'hidden'
       : 'visible'
+  const enrichedListeners = listeners.map((l) => ({
+    ...l,
+    portType: getPortType(l.port),
+  }))
   return {
     id,
     ...cached,
     visibility,
-    listeners,
+    listeners: enrichedListeners,
     processState: listeners.length > 0 ? 'running' : 'stopped',
     spawnedByUs: hasLogs(id),
   }

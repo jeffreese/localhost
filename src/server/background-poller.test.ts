@@ -5,9 +5,19 @@ vi.mock('./process-manager', () => ({
   detectAllListeners: vi.fn().mockResolvedValue({}),
 }))
 
+vi.mock('./port-probe', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./port-probe')>()
+  return {
+    ...actual,
+    probePort: vi.fn().mockResolvedValue('http'),
+  }
+})
+
+import { clearPortTypeCache, getPortType, probePort } from './port-probe'
 import { detectAllListeners } from './process-manager'
 
 const mockDetect = vi.mocked(detectAllListeners)
+const mockProbe = vi.mocked(probePort)
 
 describe('BackgroundPoller', () => {
   let poller: BackgroundPoller
@@ -16,6 +26,8 @@ describe('BackgroundPoller', () => {
     vi.useFakeTimers()
     poller = new BackgroundPoller()
     mockDetect.mockReset().mockResolvedValue({})
+    mockProbe.mockReset().mockResolvedValue('http')
+    clearPortTypeCache()
   })
 
   afterEach(() => {
@@ -397,6 +409,8 @@ describe('BackgroundPoller onDiff callback', () => {
     vi.useFakeTimers()
     poller = new BackgroundPoller()
     mockDetect.mockReset().mockResolvedValue({})
+    mockProbe.mockReset().mockResolvedValue('http')
+    clearPortTypeCache()
   })
 
   afterEach(() => {
@@ -495,5 +509,137 @@ describe('BackgroundPoller onDiff callback', () => {
     await vi.advanceTimersByTimeAsync(100)
 
     expect(diffs).toHaveLength(0)
+  })
+})
+
+describe('BackgroundPoller port type cache', () => {
+  let poller: BackgroundPoller
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    poller = new BackgroundPoller()
+    mockDetect.mockReset().mockResolvedValue({})
+    mockProbe.mockReset().mockResolvedValue('http')
+    clearPortTypeCache()
+  })
+
+  afterEach(() => {
+    poller.stop()
+    vi.useRealTimers()
+  })
+
+  it('probes new ports on portsAdded and caches result', async () => {
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    mockDetect.mockResolvedValueOnce({
+      a: [
+        { pid: 1, port: 3000 },
+        { pid: 1, port: 3001 },
+      ],
+    })
+    mockProbe.mockResolvedValueOnce('tcp')
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(mockProbe).toHaveBeenCalledWith(3001)
+    expect(getPortType(3001)).toBe('tcp')
+  })
+
+  it('probes ports from newly started projects', async () => {
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(mockProbe).toHaveBeenCalledWith(3000)
+    expect(getPortType(3000)).toBe('http')
+  })
+
+  it('invalidates cache on port removal', async () => {
+    mockDetect.mockResolvedValueOnce({
+      a: [
+        { pid: 1, port: 3000 },
+        { pid: 1, port: 3001 },
+      ],
+    })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(getPortType(3001)).toBe('http')
+
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(getPortType(3001)).toBeUndefined()
+    expect(getPortType(3000)).toBe('http')
+  })
+
+  it('invalidates cache when project stops', async () => {
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(getPortType(3000)).toBe('http')
+
+    mockDetect.mockResolvedValueOnce({})
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(getPortType(3000)).toBeUndefined()
+  })
+
+  it('re-probes port after disappearance and reappearance', async () => {
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    mockProbe.mockResolvedValueOnce('tcp')
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(getPortType(3000)).toBe('tcp')
+
+    mockDetect.mockResolvedValueOnce({})
+    await vi.advanceTimersByTimeAsync(100)
+    expect(getPortType(3000)).toBeUndefined()
+
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 2, port: 3000 }] })
+    mockProbe.mockResolvedValueOnce('http')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(getPortType(3000)).toBe('http')
+  })
+
+  it('probes multiple new ports in parallel', async () => {
+    mockDetect.mockResolvedValueOnce({
+      a: [
+        { pid: 1, port: 3000 },
+        { pid: 1, port: 3001 },
+        { pid: 1, port: 3002 },
+      ],
+    })
+    mockProbe.mockImplementation(async (port) => (port === 3001 ? 'tcp' : 'http'))
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(mockProbe).toHaveBeenCalledTimes(3)
+    expect(getPortType(3000)).toBe('http')
+    expect(getPortType(3001)).toBe('tcp')
+    expect(getPortType(3002)).toBe('http')
+  })
+
+  it('does not re-probe cached ports', async () => {
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(mockProbe).toHaveBeenCalledTimes(1)
+
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(mockProbe).toHaveBeenCalledTimes(1)
+  })
+
+  it('handles probe errors gracefully', async () => {
+    mockDetect.mockResolvedValueOnce({ a: [{ pid: 1, port: 3000 }] })
+    mockProbe.mockRejectedValueOnce(new Error('probe failed'))
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(getPortType(3000)).toBeUndefined()
+    consoleSpy.mockRestore()
   })
 })

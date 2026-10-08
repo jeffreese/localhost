@@ -149,8 +149,10 @@ export class LhProjectCard extends LitElement {
 
           ${
             isRunning && p.listeners.length > 0
-              ? p.listeners.map(
-                  (l) => html`
+              ? p.listeners.map((l) =>
+                  l.portType === 'tcp'
+                    ? html`<span class="text-muted rounded-md px-sm py-xs text-xs">:${l.port}</span>`
+                    : html`
               <button
                 class="bg-accent/10 text-accent rounded-md px-sm py-xs text-xs hover:bg-accent/20 cursor-pointer"
                 @click=${() => this.handleOpen(l.port)}

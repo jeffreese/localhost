@@ -1,4 +1,4 @@
-import type { LogLine } from '@shared/types'
+import type { LogLine, PortType } from '@shared/types'
 import type { Context } from 'hono'
 import { streamSSE } from 'hono/streaming'
 
@@ -7,7 +7,7 @@ export type SSEEvent =
   | { type: 'process-started'; data: { projectId: string } }
   | { type: 'process-stopped'; data: { projectId: string } }
   | { type: 'project-updated'; data: { projectId: string } }
-  | { type: 'port-detected'; data: { projectId: string; port: number } }
+  | { type: 'port-detected'; data: { projectId: string; port: number; portType?: PortType } }
   | { type: 'preferences-updated'; data: unknown }
   | { type: 'log'; data: { projectId: string; lines: LogLine[] } }
 
