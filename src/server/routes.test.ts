@@ -74,9 +74,10 @@ vi.mock('./health-checker', () => ({
   }),
 }))
 
-const { default: app } = await import('./index')
+const { default: app, healthChecker } = await import('./index')
 const { startProject } = await import('./process-manager')
 const { clearPortTypeCache, setPortType } = await import('./port-probe')
+const { broadcast } = await import('./sse')
 
 function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
   mockListenerMap = {}
@@ -456,6 +457,102 @@ describe('routes', () => {
       const body = await res.json()
 
       expect(body.statuses['/tmp/app']).not.toHaveProperty('responseTime')
+    })
+  })
+
+  describe('healthCheckInterval override', () => {
+    beforeEach(() => {
+      resetConfig()
+      vi.mocked(healthChecker.startChecking).mockClear()
+      vi.mocked(healthChecker.stopChecking).mockClear()
+      vi.mocked(healthChecker.isChecking).mockReturnValue(false)
+    })
+
+    it('PATCH /api/projects/:id persists healthCheckInterval to config', async () => {
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ healthCheckInterval: 10000 }),
+      })
+      expect(res.status).toBe(200)
+      expect(mockConfig.overrides['/tmp/my-app']?.healthCheckInterval).toBe(10000)
+    })
+
+    it('PATCH healthCheckInterval=0 stops health checking and broadcasts cleared status', async () => {
+      vi.mocked(healthChecker.isChecking).mockReturnValue(true)
+      vi.mocked(broadcast).mockClear()
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ healthCheckInterval: 0 }),
+      })
+      expect(res.status).toBe(200)
+      expect(healthChecker.stopChecking).toHaveBeenCalledWith('/tmp/my-app')
+      expect(broadcast).toHaveBeenCalledWith({
+        type: 'health-changed',
+        data: { projectId: '/tmp/my-app', status: null, responseTime: null },
+      })
+    })
+
+    it('PATCH healthCheckInterval restarts health checker with new interval', async () => {
+      vi.mocked(healthChecker.isChecking).mockReturnValue(true)
+      mockListenerMap = {
+        '/tmp/my-app': [{ pid: 1, port: 3000 }],
+      }
+      setPortType(3000, 'http')
+
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ healthCheckInterval: 15000 }),
+      })
+      expect(res.status).toBe(200)
+      expect(healthChecker.startChecking).toHaveBeenCalledWith('/tmp/my-app', 3000, 15000)
+    })
+
+    it('PATCH healthCheckInterval does not restart if not currently checking', async () => {
+      vi.mocked(healthChecker.isChecking).mockReturnValue(false)
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ healthCheckInterval: 15000 }),
+      })
+      expect(res.status).toBe(200)
+      expect(healthChecker.startChecking).not.toHaveBeenCalled()
+    })
+
+    it('PATCH rejects negative healthCheckInterval', async () => {
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ healthCheckInterval: -1 }),
+      })
+      expect(res.status).toBe(400)
+    })
+
+    it('PATCH rejects non-integer healthCheckInterval', async () => {
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ healthCheckInterval: 1.5 }),
+      })
+      expect(res.status).toBe(400)
+    })
+
+    it('PATCH healthCheckInterval unchanged does not trigger restart', async () => {
+      resetConfig({
+        overrides: { '/tmp/my-app': { healthCheckInterval: 5000 } },
+      })
+      vi.mocked(healthChecker.isChecking).mockReturnValue(true)
+
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ healthCheckInterval: 5000 }),
+      })
+      expect(res.status).toBe(200)
+      expect(healthChecker.startChecking).not.toHaveBeenCalled()
+      expect(healthChecker.stopChecking).not.toHaveBeenCalled()
     })
   })
 })

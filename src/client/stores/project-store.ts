@@ -101,7 +101,7 @@ function handlePortDetected(data: unknown) {
 }
 
 function handleHealthChanged(data: unknown) {
-  const { projectId, status } = data as { projectId: string; status: HealthStatus }
+  const { projectId, status } = data as { projectId: string; status: HealthStatus | null }
   projects = projects.map((p) => (p.id === projectId ? { ...p, healthStatus: status } : p))
   notify()
 }

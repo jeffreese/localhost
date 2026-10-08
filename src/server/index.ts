@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { BackgroundPoller, broadcastDiff } from './background-poller'
+import { readConfig } from './config-store'
 import { HealthChecker } from './health-checker'
 import { closeAll as closeAllLogs } from './log-store'
 import { getPortType } from './port-probe'
@@ -20,15 +21,19 @@ healthChecker.setOnChange((projectId, status, responseTime) => {
   broadcast({ type: 'health-changed', data: { projectId, status, responseTime } })
 })
 
-poller.setOnDiff((diff, currentListeners) => {
+poller.setOnDiff(async (diff, currentListeners) => {
   broadcastDiff(diff, broadcast)
 
+  const config = await readConfig()
+
   for (const projectId of diff.started) {
+    const interval = config.overrides[projectId]?.healthCheckInterval
+    if (interval === 0) continue
     const listeners = currentListeners[projectId]
     if (listeners) {
       const httpPort = listeners.find((l) => getPortType(l.port) === 'http')?.port
       if (httpPort) {
-        healthChecker.startChecking(projectId, httpPort)
+        healthChecker.startChecking(projectId, httpPort, interval)
       }
     }
   }
@@ -40,8 +45,10 @@ poller.setOnDiff((diff, currentListeners) => {
   }
 
   for (const { projectId, port: addedPort } of diff.portsAdded) {
+    const interval = config.overrides[projectId]?.healthCheckInterval
+    if (interval === 0) continue
     if (getPortType(addedPort) === 'http' && !healthChecker.isChecking(projectId)) {
-      healthChecker.startChecking(projectId, addedPort)
+      healthChecker.startChecking(projectId, addedPort, interval)
     }
   }
 
