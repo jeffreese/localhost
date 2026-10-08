@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { __addClient, __resetEventId, broadcast, getEventId } from './sse'
+import { __addClient, __clearClients, __resetEventId, broadcast, getEventId } from './sse'
 
 describe('SSE event IDs', () => {
   beforeEach(() => {
     __resetEventId()
+    __clearClients()
   })
 
   it('starts at zero', () => {

@@ -36,6 +36,11 @@ export function __resetEventId() {
   eventId = 0
 }
 
+/** Test-only: remove all clients from the broadcast set. */
+export function __clearClients() {
+  clients.clear()
+}
+
 /** Test-only: add a client to the broadcast set. Returns a remove function. */
 export function __addClient(client: { send: (event: SSEEvent, id: number) => void }) {
   const wrapped: SSEClient = { send: client.send, close: () => clients.delete(wrapped) }
