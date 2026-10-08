@@ -65,11 +65,11 @@ date: 2026-10-05
 
 ## Epic 7: Port Type Detection
 
-- [ ] 7.1 Add HTTP HEAD probe function: async fetch, 2s timeout, returns `http` or `tcp`.
-- [ ] 7.2 Integrate into background poller: probe new ports, cache results, invalidate on disappearance.
-- [ ] 7.3 Add `portType` field to listener data in SSE events and API responses.
-- [ ] 7.4 Update `<lh-project-card>`: HTTP ports clickable, TCP ports plain text.
-- [ ] 7.5 Update `<lh-port-table>`: add port type column.
+- [x] 7.1 Add HTTP HEAD probe function: async fetch, 2s timeout, returns `http` or `tcp`.
+- [x] 7.2 Integrate into background poller: probe new ports, cache results, invalidate on disappearance.
+- [x] 7.3 Add `portType` field to listener data in SSE events and API responses.
+- [x] 7.4 Update `<lh-project-card>`: HTTP ports clickable, TCP ports plain text.
+- [x] 7.5 Update `<lh-port-table>`: add port type column.
 
 ## Epic 8: Crash Detection & Notifications
 

@@ -40,7 +40,7 @@ Six services, all async:
 ### Background Poll Loop
 
 Single `setInterval` (5s) coordinating periodic tasks:
-- Every tick: async listener scan → diff → SSE broadcast for changes
+- Every tick: async listener scan → diff → port type probes (new ports) → SSE broadcast for changes
 - Every 3rd tick (15s): resource sampling via async `ps`
 - Per-project health check timers (30s default): HTTP HEAD probe, started/stopped with service lifecycle
 
@@ -75,6 +75,7 @@ src/
     process-manager.ts   # Spawn/stop/lifecycle
     config-store.ts      # Config read/write/cache
     log-store.ts         # Log persistence + rotation
+    port-probe.ts        # HTTP HEAD port type detection + cache
     sse.ts              # SSE broadcaster
     background-poller.ts # Periodic scan/health/resources
     health-checker.ts    # Per-project HTTP probes

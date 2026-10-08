@@ -7,10 +7,14 @@ export type ProcessState = 'running' | 'stopped'
 /** Project visibility */
 export type Visibility = 'visible' | 'hidden' | 'ignored'
 
+/** Port type determined by HTTP HEAD probe */
+export type PortType = 'http' | 'tcp'
+
 /** A TCP listener matched to a project by working directory */
 export interface Listener {
   pid: number
   port: number
+  portType?: PortType
 }
 
 /** A discovered project */

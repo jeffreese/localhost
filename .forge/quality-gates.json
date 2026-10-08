@@ -1,6 +1,10 @@
 {
   "version": 1,
-  "generated": "2026-10-05",
+  "generated": "2026-10-07",
+  "plugin_versions": {
+    "forge": "3.3.0",
+    "crucible": "0.2.0"
+  },
   "gates": [
     {
       "id": "error-surfacing",
