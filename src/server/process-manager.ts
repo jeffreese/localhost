@@ -8,7 +8,7 @@ const activeProcesses = new Map<string, ChildProcess>()
 
 const stoppingProjects = new Set<string>()
 
-export function markStopping(projectId: string): void {
+function markStopping(projectId: string): void {
   stoppingProjects.add(projectId)
 }
 
@@ -278,7 +278,7 @@ export async function stopProject(projectId: string): Promise<void> {
     await updateConfig((c) => {
       delete c.pids[projectId]
     })
-    // Stop flag cleared by the poller when it sees the project disappear
+    clearStopping(projectId)
     return
   }
 
