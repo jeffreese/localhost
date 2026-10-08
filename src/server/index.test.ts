@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import type { LocalhostConfig } from '@shared/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import app from './index'
 
@@ -13,6 +14,29 @@ const mockActiveProcesses = new Map<string, FakeChild>()
 
 vi.mock('./log-store', () => ({
   closeAll: vi.fn().mockResolvedValue(undefined),
+}))
+
+const { mockConfigRef } = vi.hoisted(() => {
+  const mockConfigRef: { current: LocalhostConfig } = {
+    current: {
+      scanRoot: '/tmp/Code',
+      projectTypes: {},
+      projects: {},
+      pids: {},
+      overrides: {},
+      hidden: [],
+      ignored: [],
+      sort: { field: 'name', order: 'asc' },
+      customOrder: [],
+      groupConfig: { groups: [], assignments: {} },
+      crashes: {},
+    },
+  }
+  return { mockConfigRef }
+})
+vi.mock('./config-store', () => ({
+  readConfig: vi.fn(async () => structuredClone(mockConfigRef.current)),
+  updateConfig: vi.fn(),
 }))
 
 vi.mock('./process-manager', () => ({
@@ -196,6 +220,10 @@ describe('poller lifecycle', () => {
     poller.stop()
     mockBroadcast.mockReset()
     mockPortTypeCache.clear()
+    mockConfigRef.current = {
+      ...mockConfigRef.current,
+      overrides: {},
+    }
     const { probePort } = await import('./port-probe')
     vi.mocked(probePort).mockResolvedValue('http' as import('@shared/types').PortType)
   })
@@ -257,7 +285,7 @@ describe('poller lifecycle', () => {
     mockDetect.mockResolvedValueOnce({ myApp: [{ pid: 1, port: 4000 }] })
     await vi.advanceTimersByTimeAsync(100)
 
-    expect(healthChecker.startChecking).toHaveBeenCalledWith('myApp', 4000)
+    expect(healthChecker.startChecking).toHaveBeenCalledWith('myApp', 4000, undefined)
 
     poller.stop()
     mockPortTypeCache.clear()
@@ -290,7 +318,7 @@ describe('poller lifecycle', () => {
     })
     await vi.advanceTimersByTimeAsync(100)
 
-    expect(healthChecker.startChecking).toHaveBeenCalledWith('myApp', 3000)
+    expect(healthChecker.startChecking).toHaveBeenCalledWith('myApp', 3000, undefined)
 
     poller.stop()
     mockPortTypeCache.clear()
@@ -320,7 +348,7 @@ describe('poller lifecycle', () => {
     await vi.advanceTimersByTimeAsync(100)
 
     expect(healthChecker.stopChecking).toHaveBeenCalledWith('myApp')
-    expect(healthChecker.startChecking).toHaveBeenCalledWith('myApp', 4000)
+    expect(healthChecker.startChecking).toHaveBeenCalledWith('myApp', 4000, undefined)
 
     vi.mocked(healthChecker.stopChecking).mockReset()
     vi.mocked(healthChecker.isChecking).mockReturnValue(false)
@@ -375,6 +403,89 @@ describe('poller lifecycle', () => {
     await vi.advanceTimersByTimeAsync(100)
 
     expect(healthChecker.stopChecking).toHaveBeenCalledWith('myApp')
+
+    poller.stop()
+    mockPortTypeCache.clear()
+    vi.useRealTimers()
+  })
+
+  it('passes custom healthCheckInterval from config overrides', async () => {
+    vi.useFakeTimers()
+    const { detectAllListeners } = await import('./process-manager')
+    const mockDetect = vi.mocked(detectAllListeners)
+    mockPortTypeCache.clear()
+
+    mockConfigRef.current = {
+      ...mockConfigRef.current,
+      overrides: { myApp: { healthCheckInterval: 10_000 } },
+    }
+
+    mockDetect.mockResolvedValueOnce({})
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    vi.mocked(healthChecker.startChecking).mockClear()
+    mockDetect.mockResolvedValueOnce({ myApp: [{ pid: 1, port: 4000 }] })
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(healthChecker.startChecking).toHaveBeenCalledWith('myApp', 4000, 10_000)
+
+    poller.stop()
+    mockPortTypeCache.clear()
+    vi.useRealTimers()
+  })
+
+  it('skips health checking when healthCheckInterval is 0 (process-started)', async () => {
+    vi.useFakeTimers()
+    const { detectAllListeners } = await import('./process-manager')
+    const mockDetect = vi.mocked(detectAllListeners)
+    mockPortTypeCache.clear()
+
+    mockConfigRef.current = {
+      ...mockConfigRef.current,
+      overrides: { myApp: { healthCheckInterval: 0 } },
+    }
+
+    mockDetect.mockResolvedValueOnce({})
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    vi.mocked(healthChecker.startChecking).mockClear()
+    mockDetect.mockResolvedValueOnce({ myApp: [{ pid: 1, port: 4000 }] })
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(healthChecker.startChecking).not.toHaveBeenCalled()
+
+    poller.stop()
+    mockPortTypeCache.clear()
+    vi.useRealTimers()
+  })
+
+  it('skips health checking when healthCheckInterval is 0 (port-added)', async () => {
+    vi.useFakeTimers()
+    const { detectAllListeners } = await import('./process-manager')
+    const mockDetect = vi.mocked(detectAllListeners)
+    mockPortTypeCache.clear()
+
+    mockConfigRef.current = {
+      ...mockConfigRef.current,
+      overrides: { myApp: { healthCheckInterval: 0 } },
+    }
+
+    mockDetect.mockResolvedValueOnce({ myApp: [{ pid: 1, port: 5432 }] })
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100)
+
+    vi.mocked(healthChecker.startChecking).mockClear()
+    mockDetect.mockResolvedValueOnce({
+      myApp: [
+        { pid: 1, port: 5432 },
+        { pid: 2, port: 3000 },
+      ],
+    })
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(healthChecker.startChecking).not.toHaveBeenCalled()
 
     poller.stop()
     mockPortTypeCache.clear()

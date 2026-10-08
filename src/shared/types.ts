@@ -60,6 +60,7 @@ export interface SortPreference {
 export interface ProjectOverride {
   port?: number
   devScript?: string
+  healthCheckInterval?: number
 }
 
 /** A registered project type for detection and process matching */

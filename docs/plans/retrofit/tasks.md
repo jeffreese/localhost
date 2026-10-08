@@ -87,7 +87,7 @@ date: 2026-10-05
 - [x] 9.3 Broadcast `health-changed` SSE event on status transitions.
 - [x] 9.4 Add `GET /api/health` endpoint.
 - [x] 9.5 Update `<lh-project-card>`: health indicator dot.
-- [ ] 9.6 Support per-project `healthCheckInterval` override (0 to disable).
+- [x] 9.6 Support per-project `healthCheckInterval` override (0 to disable).
 
 ## Epic 10: Resource Monitoring
 

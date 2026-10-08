@@ -42,7 +42,7 @@ Six services, all async:
 Single `setInterval` (5s) coordinating periodic tasks:
 - Every tick: async listener scan → diff → port type probes (new ports) → SSE broadcast for changes
 - Every 3rd tick (15s): resource sampling via async `ps`
-- Per-project health check timers (30s default): HTTP HEAD probe, started/stopped with service lifecycle
+- Per-project health check timers (30s default, configurable via `healthCheckInterval` override, 0 to disable): HTTP HEAD probe, started/stopped with service lifecycle
 
 ### Frontend (src/client/)
 

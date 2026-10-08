@@ -199,7 +199,21 @@ export function createApi(healthChecker: HealthChecker) {
       visibility?: 'visible' | 'hidden' | 'ignored'
       port?: number
       devScript?: string
+      healthCheckInterval?: number
     }>()
+
+    if (body.healthCheckInterval !== undefined) {
+      if (
+        typeof body.healthCheckInterval !== 'number' ||
+        !Number.isInteger(body.healthCheckInterval) ||
+        body.healthCheckInterval < 0
+      ) {
+        return c.json({ error: 'healthCheckInterval must be a non-negative integer (ms)' }, 400)
+      }
+    }
+
+    let healthCheckIntervalChanged = false
+    let newInterval: number | undefined
 
     await updateConfig((config) => {
       if (body.visibility) {
@@ -214,7 +228,11 @@ export function createApi(healthChecker: HealthChecker) {
         }
       }
 
-      if (body.port !== undefined || body.devScript !== undefined) {
+      if (
+        body.port !== undefined ||
+        body.devScript !== undefined ||
+        body.healthCheckInterval !== undefined
+      ) {
         if (!config.overrides[projectId]) {
           config.overrides[projectId] = {}
         }
@@ -224,8 +242,31 @@ export function createApi(healthChecker: HealthChecker) {
         if (body.devScript !== undefined) {
           config.overrides[projectId].devScript = body.devScript
         }
+        if (body.healthCheckInterval !== undefined) {
+          const prev = config.overrides[projectId].healthCheckInterval
+          config.overrides[projectId].healthCheckInterval = body.healthCheckInterval
+          if (prev !== body.healthCheckInterval) {
+            healthCheckIntervalChanged = true
+            newInterval = body.healthCheckInterval
+          }
+        }
       }
     })
+
+    if (healthCheckIntervalChanged) {
+      if (newInterval === 0) {
+        healthChecker.stopChecking(projectId)
+      } else if (healthChecker.isChecking(projectId)) {
+        const listenerMap = await detectAllListeners()
+        const listeners = listenerMap[projectId]
+        if (listeners) {
+          const httpPort = listeners.find((l) => getPortType(l.port) === 'http')?.port
+          if (httpPort) {
+            healthChecker.startChecking(projectId, httpPort, newInterval)
+          }
+        }
+      }
+    }
 
     broadcast({ type: 'project-updated', data: { projectId } })
     return c.json({ status: 'updated', projectId })
