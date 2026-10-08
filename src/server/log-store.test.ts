@@ -29,6 +29,7 @@ vi.mock('node:fs/promises', async () => {
 
 const {
   appendLines,
+  readLines,
   __rotateIfNeeded: rotateIfNeeded,
   closeLogs,
   closeAll,
@@ -248,6 +249,75 @@ describe('log-store', () => {
       statOverride = () => Promise.reject(eacces)
 
       await expect(rotateIfNeeded('stat-error', 1)).rejects.toThrow('permission denied')
+    })
+  })
+
+  describe('readLines', () => {
+    it('returns empty for a project with no log file', async () => {
+      const result = await readLines('nonexistent')
+      expect(result).toEqual({ lines: [], hasMore: false })
+    })
+
+    it('parses log lines from disk', async () => {
+      const ts = new Date('2026-10-05T12:00:00.000Z').getTime()
+      const lines: LogLine[] = [
+        { stream: 'stdout', ts, text: 'hello world' },
+        { stream: 'stderr', ts, text: 'an error' },
+      ]
+      await appendLines('read-test', lines)
+      await closeLogs('read-test')
+
+      const result = await readLines('read-test')
+      expect(result.lines).toHaveLength(2)
+      expect(result.lines[0]).toEqual({ stream: 'stdout', ts, text: 'hello world' })
+      expect(result.lines[1]).toEqual({ stream: 'stderr', ts, text: 'an error' })
+      expect(result.hasMore).toBe(false)
+    })
+
+    it('respects limit and reports hasMore', async () => {
+      const lines: LogLine[] = Array.from({ length: 10 }, (_, i) => ({
+        stream: 'stdout' as const,
+        ts: 1000 + i,
+        text: `line-${i}`,
+      }))
+      await appendLines('limit-test', lines)
+      await closeLogs('limit-test')
+
+      const result = await readLines('limit-test', 3)
+      expect(result.lines).toHaveLength(3)
+      expect(result.lines[0].text).toBe('line-7')
+      expect(result.lines[2].text).toBe('line-9')
+      expect(result.hasMore).toBe(true)
+    })
+
+    it('supports offset for pagination', async () => {
+      const lines: LogLine[] = Array.from({ length: 10 }, (_, i) => ({
+        stream: 'stdout' as const,
+        ts: 1000 + i,
+        text: `line-${i}`,
+      }))
+      await appendLines('offset-test', lines)
+      await closeLogs('offset-test')
+
+      const result = await readLines('offset-test', 3, 3)
+      expect(result.lines).toHaveLength(3)
+      expect(result.lines[0].text).toBe('line-4')
+      expect(result.lines[2].text).toBe('line-6')
+      expect(result.hasMore).toBe(true)
+    })
+
+    it('includes lines from the rotated file', async () => {
+      const old: LogLine[] = [{ stream: 'stdout', ts: 1000, text: 'old-line' }]
+      await appendLines('rotated-read', old, 10)
+
+      const newer: LogLine[] = [{ stream: 'stdout', ts: 2000, text: 'new-line' }]
+      await appendLines('rotated-read', newer, 10)
+      await closeLogs('rotated-read')
+
+      const result = await readLines('rotated-read', 500)
+      expect(result.lines).toHaveLength(2)
+      expect(result.lines[0].text).toBe('old-line')
+      expect(result.lines[1].text).toBe('new-line')
     })
   })
 })

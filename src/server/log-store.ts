@@ -1,4 +1,4 @@
-import { type FileHandle, mkdir, open, rename, stat } from 'node:fs/promises'
+import { type FileHandle, mkdir, open, readFile, rename, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { LogLine } from '@shared/types'
@@ -78,6 +78,55 @@ async function rotateIfNeeded(
   await closeLogs(projectName)
   await rename(path, rotatedPath(projectName))
   return true
+}
+
+const LINE_PATTERN = /^\[(\S+) (stdout|stderr)] (.*)$/
+
+function parseLine(raw: string): LogLine | null {
+  const match = LINE_PATTERN.exec(raw)
+  if (!match) return null
+  return {
+    ts: new Date(match[1]).getTime(),
+    stream: match[2] as 'stdout' | 'stderr',
+    text: match[3],
+  }
+}
+
+async function readFileLines(filePath: string): Promise<string[]> {
+  try {
+    const content = await readFile(filePath, 'utf-8')
+    if (content.length === 0) return []
+    const lines = content.split('\n')
+    if (lines[lines.length - 1] === '') lines.pop()
+    return lines
+  } catch (err: unknown) {
+    if (err instanceof Error && 'code' in err && err.code === 'ENOENT') return []
+    throw err
+  }
+}
+
+export async function readLines(
+  projectName: string,
+  limit = 500,
+  offset = 0,
+): Promise<{ lines: LogLine[]; hasMore: boolean }> {
+  validateProjectName(projectName)
+  const current = await readFileLines(logPath(projectName))
+  const rotated = await readFileLines(rotatedPath(projectName))
+  const all = [...rotated, ...current]
+
+  const end = all.length - offset
+  const start = Math.max(0, end - limit)
+  if (end <= 0) return { lines: [], hasMore: false }
+
+  const slice = all.slice(start, end)
+  const parsed = slice.reduce<LogLine[]>((acc, raw) => {
+    const line = parseLine(raw)
+    if (line) acc.push(line)
+    return acc
+  }, [])
+
+  return { lines: parsed, hasMore: start > 0 }
 }
 
 export async function closeLogs(projectName: string): Promise<void> {
