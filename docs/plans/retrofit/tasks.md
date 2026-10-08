@@ -56,7 +56,7 @@ date: 2026-10-05
 
 ## Epic 6: Log Persistence
 
-- [ ] 6.1 Create `log-store.ts`: append to `~/.localhost/logs/<project>.log` with timestamp + stream prefix. Create dir on first write.
+- [x] 6.1 Create `log-store.ts`: append to `~/.localhost/logs/<project>.log` with timestamp + stream prefix. Create dir on first write.
 - [ ] 6.2 Wire process-manager stdout/stderr to both ring buffer and log-store.
 - [ ] 6.3 Implement size-based rotation: 10MB default, keep `.log` + `.log.1`.
 - [ ] 6.4 Update `GET /api/projects/:id/logs` to read from disk with pagination.
