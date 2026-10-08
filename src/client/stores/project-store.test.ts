@@ -182,6 +182,18 @@ describe('ProjectStore health status', () => {
     ProjectStore.destroy()
   })
 
+  it('clears healthStatus on health-changed with null status', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([
+      makeProject({ id: 'app', processState: 'running', healthStatus: 'healthy' }),
+    ])
+
+    dispatchSSE('health-changed', { projectId: 'app', status: null })
+
+    expect(ProjectStore.getAll()[0].healthStatus).toBeNull()
+    ProjectStore.destroy()
+  })
+
   it('clears healthStatus on process-stopped', () => {
     ProjectStore.init()
     ProjectStore.setProjects([
