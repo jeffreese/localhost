@@ -215,6 +215,20 @@ describe('ProjectStore health status', () => {
     ProjectStore.destroy()
   })
 
+  it('clears healthStatus on process-started', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([
+      makeProject({ id: 'app', processState: 'stopped', healthStatus: 'healthy' }),
+    ])
+
+    dispatchSSE('process-started', { projectId: 'app' })
+
+    const started = ProjectStore.getAll()[0]
+    expect(started.healthStatus).toBeNull()
+    expect(started.processState).toBe('running')
+    ProjectStore.destroy()
+  })
+
   it('does not affect other projects on health-changed', () => {
     ProjectStore.init()
     ProjectStore.setProjects([
