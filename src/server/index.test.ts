@@ -69,11 +69,11 @@ import { broadcast } from './sse'
 const mockBroadcast = vi.mocked(broadcast)
 
 describe('server', () => {
-  it('responds to health check', async () => {
+  it('responds to health check with empty statuses', async () => {
     const res = await app.request('/api/health')
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toEqual({ status: 'ok' })
+    expect(body).toEqual({ statuses: {} })
   })
 })
 

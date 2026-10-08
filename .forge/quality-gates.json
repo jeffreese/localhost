@@ -3,7 +3,7 @@
   "generated": "2026-10-08",
   "plugin_versions": {
     "forge": "3.4.0",
-    "crucible": "0.2.0"
+    "crucible": "0.3.0"
   },
   "gates": [
     {
