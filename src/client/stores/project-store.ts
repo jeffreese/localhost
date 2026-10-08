@@ -1,4 +1,4 @@
-import type { Project, Visibility } from '@shared/types'
+import type { PortType, Project, Visibility } from '@shared/types'
 import { off, on } from '../sse-client'
 
 type Listener = () => void
@@ -34,15 +34,26 @@ function handleProcessStopped(data: unknown) {
 }
 
 function handlePortDetected(data: unknown) {
-  const { projectId, port } = data as { projectId: string; port: number }
+  const { projectId, port, portType } = data as {
+    projectId: string
+    port: number
+    portType?: PortType
+  }
   projects = projects.map((p) => {
     if (p.id !== projectId) return p
-    // Add new listener entry if this port isn't already tracked
-    const hasPort = p.listeners.some((l) => l.port === port)
-    if (hasPort) return p
+    const existing = p.listeners.find((l) => l.port === port)
+    if (existing) {
+      if (portType && existing.portType !== portType) {
+        return {
+          ...p,
+          listeners: p.listeners.map((l) => (l.port === port ? { ...l, portType } : l)),
+        }
+      }
+      return p
+    }
     return {
       ...p,
-      listeners: [...p.listeners, { pid: 0, port }],
+      listeners: [...p.listeners, { pid: 0, port, portType }],
       processState: 'running' as const,
     }
   })

@@ -45,6 +45,14 @@ vi.mock('./scanner', () => ({
   scanAndPersist: async () => new Map(),
 }))
 
+vi.mock('./port-probe', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./port-probe')>()
+  return {
+    ...actual,
+    probePort: vi.fn().mockResolvedValue('http'),
+  }
+})
+
 vi.mock('./sse', () => ({
   broadcast: vi.fn(),
   handleSSE: vi.fn(),
@@ -52,6 +60,7 @@ vi.mock('./sse', () => ({
 
 const { default: app } = await import('./index')
 const { startProject } = await import('./process-manager')
+const { clearPortTypeCache, setPortType } = await import('./port-probe')
 
 function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
   mockListenerMap = {}
@@ -255,5 +264,65 @@ describe('routes', () => {
       expect(res.status).toBe(200)
       expect(startProject).toHaveBeenCalled()
     })
+  })
+
+  it('GET /api/projects includes portType from cache on listeners', async () => {
+    resetConfig({
+      projects: {
+        '/tmp/my-app': {
+          name: 'my-app',
+          path: '/tmp/my-app',
+          packageManager: 'pnpm',
+          devScript: 'dev',
+          githubUrl: null,
+        },
+      },
+    })
+    mockListenerMap = {
+      '/tmp/my-app': [
+        { pid: 1, port: 3000 },
+        { pid: 1, port: 5432 },
+      ],
+    }
+    clearPortTypeCache()
+    setPortType(3000, 'http')
+    setPortType(5432, 'tcp')
+
+    const res = await app.request('/api/projects')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Array<{
+      listeners: Array<{ port: number; portType?: string }>
+    }>
+    const project = body[0]
+    const httpListener = project.listeners.find((l) => l.port === 3000)
+    const tcpListener = project.listeners.find((l) => l.port === 5432)
+    expect(httpListener?.portType).toBe('http')
+    expect(tcpListener?.portType).toBe('tcp')
+  })
+
+  it('GET /api/projects returns undefined portType when not cached', async () => {
+    resetConfig({
+      projects: {
+        '/tmp/my-app': {
+          name: 'my-app',
+          path: '/tmp/my-app',
+          packageManager: 'pnpm',
+          devScript: 'dev',
+          githubUrl: null,
+        },
+      },
+    })
+    mockListenerMap = {
+      '/tmp/my-app': [{ pid: 1, port: 8080 }],
+    }
+    clearPortTypeCache()
+
+    const res = await app.request('/api/projects')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Array<{
+      listeners: Array<{ port: number; portType?: string }>
+    }>
+    const project = body[0]
+    expect(project.listeners[0].portType).toBeUndefined()
   })
 })
