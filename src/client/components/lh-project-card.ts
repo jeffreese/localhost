@@ -19,12 +19,33 @@ export class LhProjectCard extends LitElement {
     return this
   }
 
+  private get hasCrash(): boolean {
+    return this.project.crashInfo !== null && this.project.processState !== 'running'
+  }
+
   private get statusColor(): string {
-    return this.project.processState === 'running' ? 'bg-success' : 'bg-muted'
+    if (this.project.processState === 'running') return 'bg-success'
+    if (this.hasCrash) return 'bg-danger'
+    return 'bg-muted'
   }
 
   private get statusLabel(): string {
-    return this.project.processState === 'running' ? 'Running' : 'Stopped'
+    if (this.project.processState === 'running') return 'Running'
+    if (this.hasCrash) return 'Crashed'
+    return 'Stopped'
+  }
+
+  private formatCrashInfo(): string {
+    const crash = this.project.crashInfo
+    if (!crash) return ''
+    const parts: string[] = []
+    if (crash.exitCode !== null) parts.push(`exit ${crash.exitCode}`)
+    if (crash.signal) parts.push(crash.signal)
+    const elapsed = Date.now() - new Date(crash.timestamp).getTime()
+    if (elapsed < 60_000) parts.push('just now')
+    else if (elapsed < 3_600_000) parts.push(`${Math.floor(elapsed / 60_000)}m ago`)
+    else parts.push(`${Math.floor(elapsed / 3_600_000)}h ago`)
+    return parts.join(' · ')
   }
 
   private async handleStart() {
@@ -107,7 +128,8 @@ export class LhProjectCard extends LitElement {
         <p class="text-secondary text-xs mb-sm truncate" title=${p.path}>${p.path}</p>
 
         <div class="flex items-center gap-xs mb-sm text-xs">
-          <span class="text-secondary">${this.statusLabel}</span>
+          <span class="${this.hasCrash ? 'text-danger' : 'text-secondary'}">${this.statusLabel}</span>
+          ${this.hasCrash ? html`<span class="text-danger">${this.formatCrashInfo()}</span>` : ''}
           ${
             p.listeners.length > 0
               ? p.listeners.map((l) => html`<span class="text-muted">· :${l.port}</span>`)
