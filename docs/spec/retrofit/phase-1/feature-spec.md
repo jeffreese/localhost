@@ -141,7 +141,7 @@ The app has been running in daily use since March 2026. It works, but the intern
 - [ ] Logs written to `~/.localhost/logs/<project-name>/` as timestamped files
 - [ ] Size-based log rotation — cap per-project log size (default: 10MB, configurable)
 - [ ] On restart, console drawer can load logs from disk for processes that are still running
-- [ ] Log hydration race condition fixed — SSE events arriving during fetch are buffered, not dropped
+- [x] Log hydration race condition fixed — SSE events arriving during fetch are buffered, not dropped
 
 ---
 
