@@ -9,6 +9,8 @@ const DEFAULT_MAX_SIZE = 10 * 1024 * 1024 // 10MB
 
 const fileHandles = new Map<string, FileHandle>()
 
+const writeLocks = new Map<string, Promise<void>>()
+
 function validateProjectName(name: string): void {
   if (name.includes('/') || name.includes('\\') || name.includes('..') || name.length === 0) {
     throw new Error(`Invalid project name: ${name}`)
@@ -38,14 +40,27 @@ function formatLine(line: LogLine): string {
   return `[${ts} ${line.stream}] ${line.text}\n`
 }
 
-export async function appendLines(projectName: string, lines: LogLine[]): Promise<void> {
+export async function appendLines(
+  projectName: string,
+  lines: LogLine[],
+  maxSize: number = DEFAULT_MAX_SIZE,
+): Promise<void> {
   if (lines.length === 0) return
-  const handle = await getHandle(projectName)
-  const data = lines.map(formatLine).join('')
-  await handle.write(data)
+  const prev = writeLocks.get(projectName) ?? Promise.resolve()
+  const next = prev.then(async () => {
+    await rotateIfNeeded(projectName, maxSize)
+    const handle = await getHandle(projectName)
+    const data = lines.map(formatLine).join('')
+    await handle.write(data)
+  })
+  writeLocks.set(
+    projectName,
+    next.catch(() => {}),
+  )
+  return next
 }
 
-export async function rotateIfNeeded(
+async function rotateIfNeeded(
   projectName: string,
   maxSize: number = DEFAULT_MAX_SIZE,
 ): Promise<boolean> {
@@ -88,8 +103,11 @@ export { LOG_DIR }
 
 export function __resetLogStore(): void {
   fileHandles.clear()
+  writeLocks.clear()
 }
 
 export function __setHandle(projectName: string, handle: FileHandle): void {
   fileHandles.set(projectName, handle)
 }
+
+export { rotateIfNeeded as __rotateIfNeeded }
