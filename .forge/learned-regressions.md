@@ -83,3 +83,13 @@ Bug patterns discovered during development. The `/crucible:review` agent checks 
 **Occurrences:** 1 (PR #60)
 **Pattern:** Adding support for a new project type (Rust) without adding its build output directory (`target/`) to the scanner's skip list. The scanner descends into the build output tree, issuing thousands of unnecessary filesystem calls on every scan.
 **Fix:** When adding a new project type to the registry, identify its build artifact directory and add it to `skipDirs`. Common build output directories: `node_modules`, `target`, `build`, `dist`, `__pycache__`, `.gradle`, `bin/obj`.
+
+## behavior-module-state-reset-parity
+**Occurrences:** 1 (PR #61)
+**Pattern:** Adding a new module-level `Map` or `Set` for tracking state (e.g., `activeTails`, `activeRawPaths`) without adding a corresponding `.clear()` call to the module's test-reset function (`__resetFoo`). Test isolation requires that every piece of module-level mutable state is cleared between tests. The new state works correctly in production but leaks across test cases.
+**Fix:** When adding a module-level state container, immediately find the `__reset*` function and add a `.clear()` call. If no reset function exists, create one.
+
+## behavior-async-ordering-on-refactor
+**Occurrences:** 1 (PR #61)
+**Pattern:** Refactoring an I/O pipeline (e.g., pipe-based → file-based log capture) and converting sequential operations to parallel fire-and-forget. The old code had implicit ordering (e.g., `appendToLogFile(...).finally(closeLogFile)`); the new code fires both independently, creating a race where the closer finishes before the writer, causing a leaked file handle from re-opening.
+**Fix:** When refactoring async pipelines, trace the ordering guarantees of the old code and preserve them in the new code. Each `.then()`, `.finally()`, or `await` in the original is a sequencing contract, not just style.
