@@ -12,7 +12,7 @@ import {
 } from './log-store'
 
 const activeProcesses = new Map<string, ChildProcess>()
-const activeTails = new Map<string, TailHandle>()
+const activeTails = new Map<string, { stdout: TailHandle; stderr: TailHandle }>()
 
 const stoppingProjects = new Set<string>()
 
@@ -183,11 +183,14 @@ export async function startProject(
 
   const stdoutTail = tailRawOutput(projectId, 'stdout', handleTailLines, rawFiles.stdout.rawPath)
   const stderrTail = tailRawOutput(projectId, 'stderr', handleTailLines, rawFiles.stderr.rawPath)
-  activeTails.set(projectId, stdoutTail)
+  activeTails.set(projectId, { stdout: stdoutTail, stderr: stderrTail })
 
   child.on('exit', (code, signal) => {
-    stdoutTail.stop()
-    stderrTail.stop()
+    const tails = activeTails.get(projectId)
+    if (tails) {
+      tails.stdout.stop()
+      tails.stderr.stop()
+    }
     activeTails.delete(projectId)
     flushBatch()
 
