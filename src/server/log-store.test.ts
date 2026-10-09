@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { LogLine } from '@shared/types'
@@ -36,6 +44,9 @@ const {
   LOG_DIR,
   __resetLogStore,
   __setHandle,
+  openRawOutputFiles,
+  removeRawOutputFiles,
+  tailRawOutput,
 } = await import('./log-store')
 
 const logsDir = join(testHome, '.localhost', 'logs')
@@ -329,6 +340,199 @@ describe('log-store', () => {
       expect(result.lines).toHaveLength(2)
       expect(result.lines[0].text).toBe('old-line')
       expect(result.lines[1].text).toBe('new-line')
+    })
+  })
+
+  describe('openRawOutputFiles + removeRawOutputFiles', () => {
+    it('creates stdout and stderr files in the logs directory', async () => {
+      const files = await openRawOutputFiles('raw-test')
+      await files.stdout.handle.close()
+      await files.stderr.handle.close()
+
+      expect(existsSync(files.stdout.rawPath)).toBe(true)
+      expect(existsSync(files.stderr.rawPath)).toBe(true)
+      expect(files.stdout.rawPath).toContain('.stdout.out')
+      expect(files.stderr.rawPath).toContain('.stderr.out')
+    })
+
+    it('removeRawOutputFiles cleans up both files', async () => {
+      const files = await openRawOutputFiles('cleanup-test')
+      await files.stdout.handle.close()
+      await files.stderr.handle.close()
+
+      await removeRawOutputFiles('cleanup-test')
+
+      expect(existsSync(files.stdout.rawPath)).toBe(false)
+      expect(existsSync(files.stderr.rawPath)).toBe(false)
+    })
+
+    it('removeRawOutputFiles is safe when no files exist', async () => {
+      await expect(removeRawOutputFiles('nonexistent')).resolves.toBeUndefined()
+    })
+
+    it('uses unique run IDs per invocation', async () => {
+      const first = await openRawOutputFiles('unique-test')
+      await first.stdout.handle.close()
+      await first.stderr.handle.close()
+
+      const second = await openRawOutputFiles('unique-test')
+      await second.stdout.handle.close()
+      await second.stderr.handle.close()
+
+      expect(first.stdout.rawPath).not.toBe(second.stdout.rawPath)
+
+      await removeRawOutputFiles('unique-test')
+    })
+  })
+
+  describe('tailRawOutput', () => {
+    it('reads new lines from a growing file', async () => {
+      mkdirSync(logsDir, { recursive: true })
+      const files = await openRawOutputFiles('tail-test')
+      const stdoutPath = files.stdout.rawPath
+      await files.stdout.handle.close()
+      await files.stderr.handle.close()
+
+      // Create the file empty, start tailing, then append
+      writeFileSync(stdoutPath, '')
+      const received: LogLine[] = []
+      const tail = tailRawOutput(
+        'tail-test',
+        'stdout',
+        (lines) => received.push(...lines),
+        stdoutPath,
+      )
+
+      // Write after watcher is set up
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      appendFileSync(stdoutPath, 'line one\nline two\n')
+
+      await vi.waitFor(
+        () => {
+          expect(received.length).toBeGreaterThanOrEqual(2)
+        },
+        { timeout: 3000 },
+      )
+
+      tail.stop()
+      expect(received.map((l) => l.text)).toEqual(['line one', 'line two'])
+      expect(received.every((l) => l.stream === 'stdout')).toBe(true)
+
+      await removeRawOutputFiles('tail-test')
+    })
+
+    it('preserves stderr stream tag', async () => {
+      mkdirSync(logsDir, { recursive: true })
+      const files = await openRawOutputFiles('stderr-tag-test')
+      const stderrPath = files.stderr.rawPath
+      await files.stdout.handle.close()
+      await files.stderr.handle.close()
+
+      writeFileSync(stderrPath, '')
+      const received: LogLine[] = []
+      const tail = tailRawOutput(
+        'stderr-tag-test',
+        'stderr',
+        (lines) => received.push(...lines),
+        stderrPath,
+      )
+
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      appendFileSync(stderrPath, 'error output\n')
+
+      await vi.waitFor(
+        () => {
+          expect(received.length).toBeGreaterThanOrEqual(1)
+        },
+        { timeout: 3000 },
+      )
+
+      tail.stop()
+      expect(received[0].stream).toBe('stderr')
+      expect(received[0].text).toBe('error output')
+
+      await removeRawOutputFiles('stderr-tag-test')
+    })
+
+    it('handles partial lines across reads', async () => {
+      mkdirSync(logsDir, { recursive: true })
+      const files = await openRawOutputFiles('partial-test')
+      const stdoutPath = files.stdout.rawPath
+      await files.stdout.handle.close()
+      await files.stderr.handle.close()
+
+      writeFileSync(stdoutPath, '')
+      const received: LogLine[] = []
+      const tail = tailRawOutput(
+        'partial-test',
+        'stdout',
+        (lines) => received.push(...lines),
+        stdoutPath,
+      )
+
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      appendFileSync(stdoutPath, 'complete\npartial-no-newline')
+
+      await vi.waitFor(
+        () => {
+          expect(received.length).toBeGreaterThanOrEqual(1)
+        },
+        { timeout: 3000 },
+      )
+      expect(received.map((l) => l.text)).toEqual(['complete'])
+
+      appendFileSync(stdoutPath, ' finished\n')
+      await vi.waitFor(
+        () => {
+          expect(received.length).toBeGreaterThanOrEqual(2)
+        },
+        { timeout: 3000 },
+      )
+
+      tail.stop()
+      expect(received[1].text).toBe('partial-no-newline finished')
+
+      await removeRawOutputFiles('partial-test')
+    })
+
+    it('stop flushes remaining partial line', async () => {
+      mkdirSync(logsDir, { recursive: true })
+      const files = await openRawOutputFiles('flush-test')
+      const stdoutPath = files.stdout.rawPath
+      await files.stdout.handle.close()
+      await files.stderr.handle.close()
+
+      writeFileSync(stdoutPath, '')
+      const received: LogLine[] = []
+      const tail = tailRawOutput(
+        'flush-test',
+        'stdout',
+        (lines) => received.push(...lines),
+        stdoutPath,
+      )
+
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      appendFileSync(stdoutPath, 'no-trailing-newline')
+
+      // Wait for the watcher to fire and read
+      await vi.waitFor(
+        () => {
+          // The partial is held internally, not yet emitted
+          expect(true).toBe(true)
+        },
+        { timeout: 1000 },
+      )
+      await new Promise((resolve) => setTimeout(resolve, 200))
+
+      tail.stop()
+      expect(received.map((l) => l.text)).toEqual(['no-trailing-newline'])
+
+      await removeRawOutputFiles('flush-test')
+    })
+
+    it('returns no-op handle when no path exists', () => {
+      const tail = tailRawOutput('nonexistent-proj', 'stdout', () => {})
+      tail.stop()
     })
   })
 })

@@ -151,39 +151,45 @@ export async function closeAll(): Promise<void> {
   }
 }
 
-const activeRawPaths = new Map<string, string>()
+const activeRawPaths = new Map<string, { stdout: string; stderr: string }>()
 
-function rawOutputPath(projectId: string, runId: string): string {
-  return join(LOG_DIR, `${safeFilename(projectId)}.${runId}.out`)
+function rawOutputPath(projectId: string, runId: string, stream: 'stdout' | 'stderr'): string {
+  return join(LOG_DIR, `${safeFilename(projectId)}.${runId}.${stream}.out`)
+}
+
+export interface RawOutputFiles {
+  stdout: { handle: FileHandle; rawPath: string }
+  stderr: { handle: FileHandle; rawPath: string }
 }
 
 /**
- * Open a raw output file for stdio redirection. Returns a FileHandle
- * whose .fd property is suitable for spawn()'s stdio array, plus the
- * file path for the tailer. Uses a unique run ID to prevent races
- * between overlapping start/stop cycles. The caller must close the
- * handle after spawn returns — the child inherits the fd.
+ * Open raw output files for stdio redirection. Returns separate handles
+ * for stdout and stderr whose .fd properties are suitable for spawn()'s
+ * stdio array. Uses a unique run ID to prevent races between overlapping
+ * start/stop cycles. The caller must close both handles after spawn
+ * returns — the child inherits the fds independently.
  */
-export async function openRawOutputFile(
-  projectName: string,
-): Promise<{ handle: FileHandle; rawPath: string }> {
+export async function openRawOutputFiles(projectName: string): Promise<RawOutputFiles> {
   await mkdir(LOG_DIR, { recursive: true })
   const runId = `${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
-  const path = rawOutputPath(projectName, runId)
-  activeRawPaths.set(projectName, path)
-  const handle = await open(path, 'w')
-  return { handle, rawPath: path }
+  const stdoutPath = rawOutputPath(projectName, runId, 'stdout')
+  const stderrPath = rawOutputPath(projectName, runId, 'stderr')
+  activeRawPaths.set(projectName, { stdout: stdoutPath, stderr: stderrPath })
+  const [stdoutHandle, stderrHandle] = await Promise.all([
+    open(stdoutPath, 'w'),
+    open(stderrPath, 'w'),
+  ])
+  return {
+    stdout: { handle: stdoutHandle, rawPath: stdoutPath },
+    stderr: { handle: stderrHandle, rawPath: stderrPath },
+  }
 }
 
-export async function removeRawOutputFile(projectName: string): Promise<void> {
-  const path = activeRawPaths.get(projectName)
-  if (!path) return
+export async function removeRawOutputFiles(projectName: string): Promise<void> {
+  const paths = activeRawPaths.get(projectName)
+  if (!paths) return
   activeRawPaths.delete(projectName)
-  try {
-    await unlink(path)
-  } catch {
-    // Already gone or never created
-  }
+  await Promise.all([unlink(paths.stdout).catch(() => {}), unlink(paths.stderr).catch(() => {})])
 }
 
 export interface TailHandle {
@@ -200,10 +206,12 @@ const MAX_PARTIAL_LEN = 16 * 1024 // 16KB partial line cap
  */
 export function tailRawOutput(
   projectName: string,
+  stream: 'stdout' | 'stderr',
   onLines: (lines: LogLine[]) => void,
   rawPath?: string,
 ): TailHandle {
-  const resolvedPath = rawPath ?? activeRawPaths.get(projectName)
+  const paths = activeRawPaths.get(projectName)
+  const resolvedPath = rawPath ?? paths?.[stream]
   if (!resolvedPath) {
     return { stop() {} }
   }
@@ -253,7 +261,7 @@ export function tailRawOutput(
 
         const ts = Date.now()
         const lines: LogLine[] = parts.map((line) => ({
-          stream: 'stdout' as const,
+          stream,
           ts,
           text: line,
         }))
@@ -316,7 +324,7 @@ export function tailRawOutput(
         watcher = null
       }
       if (partial.length > 0) {
-        onLines([{ stream: 'stdout', ts: Date.now(), text: partial }])
+        onLines([{ stream, ts: Date.now(), text: partial }])
         partial = ''
       }
     },
@@ -328,6 +336,7 @@ export { LOG_DIR }
 export function __resetLogStore(): void {
   fileHandles.clear()
   writeLocks.clear()
+  activeRawPaths.clear()
 }
 
 export function __setHandle(projectName: string, handle: FileHandle): void {

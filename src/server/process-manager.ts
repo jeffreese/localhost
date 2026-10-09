@@ -6,8 +6,8 @@ import {
   type TailHandle,
   appendLines as appendToLogFile,
   closeLogs,
-  openRawOutputFile,
-  removeRawOutputFile,
+  openRawOutputFiles,
+  removeRawOutputFiles,
   tailRawOutput,
 } from './log-store'
 
@@ -110,25 +110,24 @@ export async function startProject(
     env.PORT = String(portOverride)
   }
 
-  const { handle: rawHandle, rawPath } = await openRawOutputFile(projectId)
-  const rawFd = rawHandle.fd
+  const rawFiles = await openRawOutputFiles(projectId)
 
   let child: ChildProcess
   const [cmd, args] = buildCommand(packageManager, devScript)
   try {
     child = spawn(cmd, args, {
       cwd: projectPath,
-      stdio: ['ignore', rawFd, rawFd],
+      stdio: ['ignore', rawFiles.stdout.handle.fd, rawFiles.stderr.handle.fd],
       detached: true,
       env,
     })
   } catch (err) {
-    await rawHandle.close()
+    await Promise.all([rawFiles.stdout.handle.close(), rawFiles.stderr.handle.close()])
     throw err
   }
 
-  // Child has inherited the fd; close our copy
-  await rawHandle.close()
+  // Child has inherited the fds; close our copies
+  await Promise.all([rawFiles.stdout.handle.close(), rawFiles.stderr.handle.close()])
 
   activeProcesses.set(projectId, child)
 
@@ -160,9 +159,11 @@ export async function startProject(
     batchTimer = setTimeout(flushBatch, LOG_BATCH_WINDOW_MS)
   }
 
+  let lastAppendPromise: Promise<void> = Promise.resolve()
+
   const handleTailLines = (newLines: LogLine[]) => {
     appendLogLines(projectId, newLines)
-    appendToLogFile(projectId, newLines).catch((err) =>
+    lastAppendPromise = appendToLogFile(projectId, newLines).catch((err) =>
       console.error(`Log file write failed for ${projectId}:`, err),
     )
     pendingBatch.push(...newLines)
@@ -180,21 +181,20 @@ export async function startProject(
     }
   }
 
-  const tail = tailRawOutput(projectId, handleTailLines, rawPath)
-  activeTails.set(projectId, tail)
+  const stdoutTail = tailRawOutput(projectId, 'stdout', handleTailLines, rawFiles.stdout.rawPath)
+  const stderrTail = tailRawOutput(projectId, 'stderr', handleTailLines, rawFiles.stderr.rawPath)
+  activeTails.set(projectId, stdoutTail)
 
   child.on('exit', (code, signal) => {
-    const tailHandle = activeTails.get(projectId)
-    if (tailHandle) {
-      tailHandle.stop()
-      activeTails.delete(projectId)
-    }
+    stdoutTail.stop()
+    stderrTail.stop()
+    activeTails.delete(projectId)
     flushBatch()
 
-    closeLogs(projectId).catch((err) =>
-      console.error(`Log file close failed for ${projectId}:`, err),
-    )
-    removeRawOutputFile(projectId).catch((err) =>
+    lastAppendPromise
+      .then(() => closeLogs(projectId))
+      .catch((err: unknown) => console.error(`Log file close failed for ${projectId}:`, err))
+    removeRawOutputFiles(projectId).catch((err) =>
       console.error(`Raw output cleanup failed for ${projectId}:`, err),
     )
 
@@ -386,9 +386,10 @@ export function __resetLogBuffers(): void {
   logBuffers.clear()
 }
 
-/** Test-only: clear the active process map (does not kill anything). */
+/** Test-only: clear the active process map and tail handles (does not kill anything). */
 export function __resetActiveProcesses(): void {
   activeProcesses.clear()
+  activeTails.clear()
 }
 
 /** Test-only: clear all stop flags. */

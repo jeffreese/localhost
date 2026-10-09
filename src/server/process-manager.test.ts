@@ -34,15 +34,23 @@ const mockTailStop = vi.fn()
 vi.mock('./log-store', () => ({
   appendLines: vi.fn().mockResolvedValue(undefined),
   closeLogs: vi.fn().mockResolvedValue(undefined),
-  openRawOutputFile: vi.fn().mockResolvedValue({
-    handle: { fd: 42, close: vi.fn().mockResolvedValue(undefined) },
-    rawPath: '/tmp/logs/test.123.out',
+  openRawOutputFiles: vi.fn().mockResolvedValue({
+    stdout: {
+      handle: { fd: 42, close: vi.fn().mockResolvedValue(undefined) },
+      rawPath: '/tmp/logs/test.123.stdout.out',
+    },
+    stderr: {
+      handle: { fd: 43, close: vi.fn().mockResolvedValue(undefined) },
+      rawPath: '/tmp/logs/test.123.stderr.out',
+    },
   }),
-  removeRawOutputFile: vi.fn().mockResolvedValue(undefined),
-  tailRawOutput: vi.fn((_projectName: string, onLines: (lines: LogLine[]) => void) => {
-    tailCallback = onLines
-    return { stop: mockTailStop }
-  }),
+  removeRawOutputFiles: vi.fn().mockResolvedValue(undefined),
+  tailRawOutput: vi.fn(
+    (_projectName: string, _stream: string, onLines: (lines: LogLine[]) => void) => {
+      tailCallback = onLines
+      return { stop: mockTailStop }
+    },
+  ),
 }))
 
 vi.mock('./listener-scanner', async (importOriginal) => {
@@ -85,8 +93,8 @@ const {
 const {
   appendLines: mockAppendLines,
   closeLogs: mockCloseLogs,
-  openRawOutputFile: mockOpenRawOutputFile,
-  removeRawOutputFile: mockRemoveRawOutputFile,
+  openRawOutputFiles: mockOpenRawOutputFiles,
+  removeRawOutputFiles: mockRemoveRawOutputFiles,
   tailRawOutput: mockTailRawOutput,
 } = await import('./log-store')
 
@@ -238,8 +246,8 @@ describe('process-manager', () => {
       fakeChild = new FakeChild()
       spawnMock.mockReset()
       spawnMock.mockReturnValue(fakeChild)
-      vi.mocked(mockOpenRawOutputFile).mockClear()
-      vi.mocked(mockRemoveRawOutputFile).mockClear()
+      vi.mocked(mockOpenRawOutputFiles).mockClear()
+      vi.mocked(mockRemoveRawOutputFiles).mockClear()
       vi.mocked(mockTailRawOutput).mockClear()
       resetConfig()
     })
@@ -247,10 +255,10 @@ describe('process-manager', () => {
     it('spawns with detached: true and fd-based stdio', async () => {
       await startProject('p1', '/tmp/p1', 'pnpm', 'dev')
 
-      expect(mockOpenRawOutputFile).toHaveBeenCalledWith('p1')
+      expect(mockOpenRawOutputFiles).toHaveBeenCalledWith('p1')
       expect(spawnMock).toHaveBeenCalledWith('pnpm', ['dev'], {
         cwd: '/tmp/p1',
-        stdio: ['ignore', 42, 42],
+        stdio: ['ignore', 42, 43],
         detached: true,
         env: expect.objectContaining({ FORCE_COLOR: '1' }),
       })
@@ -300,7 +308,7 @@ describe('process-manager', () => {
 
       expect(spawnMock).toHaveBeenCalledWith('pnpm', ['dev'], {
         cwd: '/tmp/p1',
-        stdio: ['ignore', 42, 42],
+        stdio: ['ignore', 42, 43],
         detached: true,
         env: expect.objectContaining({ FORCE_COLOR: '1', PORT: '4000' }),
       })
@@ -416,7 +424,7 @@ describe('process-manager', () => {
       spawnMock.mockReturnValue(fakeChild)
       vi.mocked(mockAppendLines).mockClear()
       vi.mocked(mockCloseLogs).mockClear()
-      vi.mocked(mockRemoveRawOutputFile).mockClear()
+      vi.mocked(mockRemoveRawOutputFiles).mockClear()
       vi.mocked(mockTailRawOutput).mockClear()
       resetConfig()
     })
@@ -470,12 +478,12 @@ describe('process-manager', () => {
       })
     })
 
-    it('cleans up raw output file on process exit', async () => {
+    it('cleans up raw output files on process exit', async () => {
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
       fakeChild.emit('exit', 0, null)
 
       await vi.waitFor(() => {
-        expect(mockRemoveRawOutputFile).toHaveBeenCalledWith('p1')
+        expect(mockRemoveRawOutputFiles).toHaveBeenCalledWith('p1')
       })
     })
 
@@ -515,12 +523,19 @@ describe('process-manager', () => {
       expect((lines as LogLine[]).map((l) => l.text)).toEqual(['one', 'two', 'three'])
     })
 
-    it('starts tailRawOutput for log capture', async () => {
+    it('starts tailRawOutput for stdout and stderr', async () => {
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
       expect(mockTailRawOutput).toHaveBeenCalledWith(
         'p1',
+        'stdout',
         expect.any(Function),
-        '/tmp/logs/test.123.out',
+        '/tmp/logs/test.123.stdout.out',
+      )
+      expect(mockTailRawOutput).toHaveBeenCalledWith(
+        'p1',
+        'stderr',
+        expect.any(Function),
+        '/tmp/logs/test.123.stderr.out',
       )
     })
   })
@@ -534,7 +549,7 @@ describe('process-manager', () => {
       fakeChild = new FakeChild()
       spawnMock.mockReset()
       spawnMock.mockReturnValue(fakeChild)
-      vi.mocked(mockOpenRawOutputFile).mockClear()
+      vi.mocked(mockOpenRawOutputFiles).mockClear()
       vi.mocked(mockTailRawOutput).mockClear()
       resetConfig()
     })
