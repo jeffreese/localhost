@@ -69,3 +69,8 @@
 **Friction:** Crucible required 2 rounds — R1: PATCH /groups/:id missing duplicate-name check (create/update validation parity), group deletion without confirmation (destructive action), rename only via double-click (WCAG keyboard a11y), fire-and-forget promise without catch, missing test.
 **Root cause:** The PATCH endpoint mirrored the POST handler's structure but not its validation constraints. The destructive action was a one-click delete with cascading unassignment. The rename discoverability was mouse-only.
 **Category:** crucible-rework
+
+## 2026-10-09 — feat/project-type-registry
+**Friction:** Crucible required 2 rounds — R1: stale cached entries missing projectType rendered "undefined", detectProject return null on parse failure prevented fallback to other registry entries, Rust target/ not in skipDirs, ../. bypassed marker validation, no endpoint tests.
+**Root cause:** Data migration gap (new required field on persisted type without fallback), loop exit semantics (return vs continue), incomplete skip list for new project type, and insufficient input validation coverage.
+**Category:** crucible-rework
