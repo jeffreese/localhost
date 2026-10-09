@@ -2,7 +2,7 @@
 
 ## Active
 
-1. **[retrofit](retrofit/)** — Server stability (async I/O, process groups, config hardening), reactivity (background polling, SSE push), operational features (groups, health checks, resource monitoring, log persistence, crash notifications, port type detection), broader detection (project type registry, Rust support)
+_(none)_
 
 ## Future
 
@@ -17,5 +17,6 @@
 
 ## Shipped
 
+- **[retrofit](retrofit/)** — Server stability (async I/O, process groups, config hardening), reactivity (background polling, SSE push), operational features (groups, health checks, resource monitoring, log persistence, crash notifications, port type detection), broader detection (project type registry, Rust support)
 - **[mvp](mvp/)** — Project discovery, start/stop, status dashboard, port management, project visibility
 - **Log viewer** — Stream dev server stdout/stderr in a bottom-drawer console (ADR-008)

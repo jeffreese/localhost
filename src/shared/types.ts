@@ -25,6 +25,7 @@ export interface Project {
   id: string
   name: string
   path: string
+  projectType: string
   packageManager: PackageManager
   devScript: string | null
   githubUrl: string | null
@@ -117,6 +118,7 @@ export interface LocalhostConfig {
 export interface ProjectCache {
   name: string
   path: string
+  projectType: string
   packageManager: PackageManager
   devScript: string | null
   githubUrl: string | null

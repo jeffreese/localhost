@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
-import type { Listener } from '@shared/types'
+import type { Listener, ProjectTypeEntry } from '@shared/types'
+import { readConfig } from './config-store'
 
 interface RawListener {
   pid: number
@@ -14,27 +15,41 @@ function execAsync(command: string, args: string[]): Promise<string> {
   })
 }
 
-/** Commands that commonly run dev servers */
-const DEV_SERVER_COMMANDS = ['node', 'bun', 'deno']
-
 /**
- * Build the lsof -c flags to filter by command name.
+ * Build -c flags from registry processNames.
  * Multiple -c flags are OR'd together by lsof.
  */
-const COMMAND_FLAGS = DEV_SERVER_COMMANDS.flatMap((c) => ['-c', c])
+export function buildCommandFlags(registry: Record<string, ProjectTypeEntry>): string[] {
+  const names = new Set<string>()
+  for (const entry of Object.values(registry)) {
+    if (entry.processNames) {
+      for (const name of entry.processNames) {
+        names.add(name)
+      }
+    }
+  }
+  return [...names].flatMap((c) => ['-c', c])
+}
 
 /**
  * Enumerate TCP listeners for dev-server processes and resolve their cwds
  * in two efficient batched lsof calls:
- * 1. lsof -c node -c bun -c deno -iTCP -sTCP:LISTEN → pid+port for dev servers only
- * 2. lsof -c node -c bun -c deno -a -d cwd → pid+cwd for all dev server processes
+ * 1. lsof -c <...> -iTCP -sTCP:LISTEN → pid+port for dev servers only
+ * 2. lsof -c <...> -a -d cwd → pid+cwd for all dev server processes
  */
 export async function enumerateListeners(): Promise<{
   listeners: RawListener[]
   cwdByPid: Map<number, string>
 }> {
+  const config = await readConfig()
+  const commandFlags = buildCommandFlags(config.projectTypes)
+
+  if (commandFlags.length === 0) {
+    return { listeners: [], cwdByPid: new Map() }
+  }
+
   const listenerOutput = await execAsync('lsof', [
-    ...COMMAND_FLAGS,
+    ...commandFlags,
     '-a',
     '-iTCP',
     '-sTCP:LISTEN',
@@ -48,7 +63,7 @@ export async function enumerateListeners(): Promise<{
     return { listeners, cwdByPid: new Map() }
   }
 
-  const cwdOutput = await execAsync('lsof', [...COMMAND_FLAGS, '-a', '-d', 'cwd', '-F', 'pn'])
+  const cwdOutput = await execAsync('lsof', [...commandFlags, '-a', '-d', 'cwd', '-F', 'pn'])
   const cwdByPid = parseCwdOutput(cwdOutput)
   return { listeners, cwdByPid }
 }
@@ -109,16 +124,13 @@ export function matchListenersToProjects(
 ): Record<string, Listener[]> {
   const result: Record<string, Listener[]> = {}
 
-  // Deduplicate listeners by pid+port
   const unique = new Map<string, RawListener>()
   for (const l of listeners) {
     unique.set(`${l.pid}:${l.port}`, l)
   }
 
-  // Sort project paths longest-first so nested projects match before parents
   const sortedProjects = Object.entries(projectPaths).sort(([, a], [, b]) => b.length - a.length)
 
-  // Match listeners to projects
   const claimed = new Set<string>()
   for (const listener of unique.values()) {
     const cwd = cwdByPid.get(listener.pid)
@@ -139,7 +151,6 @@ export function matchListenersToProjects(
     }
   }
 
-  // Sort listeners by port within each project
   for (const listeners of Object.values(result)) {
     listeners.sort((a, b) => a.port - b.port)
   }

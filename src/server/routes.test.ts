@@ -115,6 +115,7 @@ describe('routes', () => {
         '/tmp/my-app': {
           name: 'my-app',
           path: '/tmp/my-app',
+          projectType: 'node',
           packageManager: 'pnpm',
           devScript: 'dev',
           githubUrl: null,
@@ -138,6 +139,7 @@ describe('routes', () => {
         '/tmp/my-app': {
           name: 'my-app',
           path: '/tmp/my-app',
+          projectType: 'node',
           packageManager: 'pnpm',
           devScript: 'dev',
           githubUrl: null,
@@ -207,6 +209,7 @@ describe('routes', () => {
         '/tmp/my-app': {
           name: 'my-app',
           path: '/tmp/my-app',
+          projectType: 'node',
           packageManager: 'npm',
           devScript: 'dev',
           githubUrl: null,
@@ -228,6 +231,7 @@ describe('routes', () => {
         '/tmp/my-app': {
           name: 'my-app',
           path: '/tmp/my-app',
+          projectType: 'node',
           packageManager: 'pnpm' as const,
           devScript: 'dev',
           githubUrl: null,
@@ -326,6 +330,7 @@ describe('routes', () => {
         '/tmp/my-app': {
           name: 'my-app',
           path: '/tmp/my-app',
+          projectType: 'node',
           packageManager: 'pnpm',
           devScript: 'dev',
           githubUrl: null,
@@ -360,6 +365,7 @@ describe('routes', () => {
         '/tmp/my-app': {
           name: 'my-app',
           path: '/tmp/my-app',
+          projectType: 'node',
           packageManager: 'pnpm',
           devScript: 'dev',
           githubUrl: null,
@@ -748,6 +754,7 @@ describe('routes', () => {
           '/tmp/my-app': {
             name: 'my-app',
             path: '/tmp/my-app',
+            projectType: 'node',
             packageManager: 'pnpm',
             devScript: 'dev',
             githubUrl: null,
@@ -770,6 +777,7 @@ describe('routes', () => {
           '/tmp/my-app': {
             name: 'my-app',
             path: '/tmp/my-app',
+            projectType: 'node',
             packageManager: 'pnpm',
             devScript: 'dev',
             githubUrl: null,
