@@ -17,7 +17,9 @@ Before signaling any PID:
 
 ## Shutdown
 
-Spawned processes are decoupled from the server lifecycle — they survive server restarts and shutdowns. The server cleans up only its own resources (poller, health checker, log handles) on exit. Spawned processes are only killed on explicit user request via the stop API.
+The server does not kill spawned processes on exit — it cleans up only its own resources (poller, health checker, log handles). Spawned processes are only killed on explicit user request via the stop API.
+
+Note: spawned processes use piped stdio for real-time log capture. When the server exits, the pipe read ends close. Node.js dev servers typically handle the resulting EPIPE gracefully, but non-Node.js processes may receive SIGPIPE. A future improvement could write logs to file descriptors instead of pipes.
 
 ## Stale PID Cleanup
 

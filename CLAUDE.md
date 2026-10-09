@@ -32,7 +32,7 @@ Six services, all async:
 
 - **Scanner** — Walks `~/Code/` using the project type registry to discover projects. Detects marker files (package.json, Cargo.toml, user-defined), package managers, dev scripts, GitHub URLs.
 - **Listener Scanner** — Async `lsof` calls enumerate OS TCP listeners, resolve cwds, match to project paths. Command filter built dynamically from the project type registry's `processNames` arrays.
-- **Process Manager** — Spawns dev servers into own process groups (`detached: true`). Stops via `kill(-pgid)` on user request only. PID verification before signaling. Startup cleanup prunes stale PIDs from config. Spawned processes survive server restarts.
+- **Process Manager** — Spawns dev servers into own process groups (`detached: true`). Stops via `kill(-pgid)` on user request only. PID verification before signaling. Startup cleanup prunes stale PIDs from config. Server does not kill spawned processes on exit.
 - **Config Store** — Reads/writes `~/.localhost/config.json`. Atomic writes (temp + rename). Serialized read-modify-write (async queue). In-memory cache.
 - **Log Store** — Writes process stdout/stderr to `~/.localhost/logs/<project>.log`. Size-based rotation (10MB). Provides hydration endpoint for console drawer.
 - **SSE Broadcaster** — Pushes state changes to connected clients. 30s keepalive. Event types: scan-complete, process-started, process-stopped, process-crashed, port-detected, log, health-changed, resource-update, groups-changed.

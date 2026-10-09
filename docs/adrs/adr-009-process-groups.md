@@ -43,7 +43,7 @@ Additionally, stored PIDs in `config.pids` go stale — 9 of 10 observed entries
 ### Positive
 
 - Single signal kills the entire process tree on user-initiated stop — no orphans
-- Spawned services survive server restarts — localhost is a controller, not a parent
+- Spawned services are no longer killed on server exit — localhost is a controller, not a parent
 - PID verification prevents signaling unrelated processes
 - Stale PID cleanup removes accumulated dead entries
 

@@ -392,10 +392,6 @@ export async function cleanupStalePids(): Promise<number> {
   return staleIds.length
 }
 
-export function getActiveProcesses(): Map<string, ChildProcess> {
-  return activeProcesses
-}
-
 /** Snapshot of the current log ring buffer for a project. */
 export function getLogs(projectId: string): LogLine[] {
   return logBuffers.get(projectId)?.slice() ?? []
