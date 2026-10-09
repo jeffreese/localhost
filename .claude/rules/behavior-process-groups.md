@@ -17,7 +17,7 @@ Before signaling any PID:
 
 ## Shutdown
 
-Server entry point must register `process.on('SIGTERM'/'SIGINT'/'exit')` handlers that SIGTERM all active process groups, wait 3s, then SIGKILL survivors.
+Spawned processes are decoupled from the server lifecycle — they survive server restarts and shutdowns. The server cleans up only its own resources (poller, health checker, log handles) on exit. Spawned processes are only killed on explicit user request via the stop API.
 
 ## Stale PID Cleanup
 
