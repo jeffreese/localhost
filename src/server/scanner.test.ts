@@ -17,6 +17,18 @@ vi.mock('./config-store', async () => {
     ...actual,
     readConfig: async () => ({
       scanRoot: testRoot,
+      projectTypes: {
+        'package.json': {
+          name: 'node',
+          detectManager: true,
+          processNames: ['node', 'bun', 'deno'],
+        },
+        'Cargo.toml': {
+          name: 'rust',
+          defaultCommand: 'cargo run',
+          processNames: ['cargo'],
+        },
+      },
       projects: {},
       pids: {},
       overrides: {},
@@ -29,7 +41,7 @@ vi.mock('./config-store', async () => {
 
 const { scan } = await import('./scanner')
 
-function makeProject(
+function makeNodeProject(
   name: string,
   opts: { lockFile?: string; scripts?: Record<string, string> } = {},
 ) {
@@ -42,6 +54,12 @@ function makeProject(
   if (opts.lockFile) {
     writeFileSync(join(dir, opts.lockFile), '')
   }
+}
+
+function makeRustProject(name: string) {
+  const dir = join(testRoot, name)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'Cargo.toml'), `[package]\nname = "${name}"\nversion = "0.1.0"\n`)
 }
 
 function firstProject(results: Map<string, ProjectCache>): ProjectCache {
@@ -60,53 +78,88 @@ describe('scanner', () => {
   })
 
   it('discovers projects with package.json', async () => {
-    makeProject('my-app')
+    makeNodeProject('my-app')
     const results = await scan()
     expect(results.size).toBe(1)
     const project = firstProject(results)
     expect(project.name).toBe('my-app')
     expect(project.devScript).toBe('dev')
+    expect(project.projectType).toBe('node')
   })
 
   it('detects pnpm from lock file', async () => {
-    makeProject('pnpm-app', { lockFile: 'pnpm-lock.yaml' })
+    makeNodeProject('pnpm-app', { lockFile: 'pnpm-lock.yaml' })
     const results = await scan()
     const project = firstProject(results)
     expect(project.packageManager).toBe('pnpm')
   })
 
   it('detects yarn from lock file', async () => {
-    makeProject('yarn-app', { lockFile: 'yarn.lock' })
+    makeNodeProject('yarn-app', { lockFile: 'yarn.lock' })
     const results = await scan()
     const project = firstProject(results)
     expect(project.packageManager).toBe('yarn')
   })
 
   it('defaults to npm when no lock file', async () => {
-    makeProject('npm-app')
+    makeNodeProject('npm-app')
     const results = await scan()
     const project = firstProject(results)
     expect(project.packageManager).toBe('npm')
   })
 
   it('detects start script when dev is missing', async () => {
-    makeProject('start-app', { scripts: { start: 'node index.js' } })
+    makeNodeProject('start-app', { scripts: { start: 'node index.js' } })
     const results = await scan()
     const project = firstProject(results)
     expect(project.devScript).toBe('start')
   })
 
   it('returns null devScript when none found', async () => {
-    makeProject('no-script-app', { scripts: { build: 'tsc' } })
+    makeNodeProject('no-script-app', { scripts: { build: 'tsc' } })
     const results = await scan()
     const project = firstProject(results)
     expect(project.devScript).toBeNull()
   })
 
   it('discovers multiple projects', async () => {
-    makeProject('app-a')
-    makeProject('app-b')
+    makeNodeProject('app-a')
+    makeNodeProject('app-b')
     const results = await scan()
     expect(results.size).toBe(2)
+  })
+
+  it('discovers Rust projects via Cargo.toml', async () => {
+    makeRustProject('my-rust-app')
+    const results = await scan()
+    expect(results.size).toBe(1)
+    const project = firstProject(results)
+    expect(project.name).toBe('my-rust-app')
+    expect(project.projectType).toBe('rust')
+    expect(project.devScript).toBe('cargo run')
+    expect(project.packageManager).toBe('npm')
+  })
+
+  it('first-match-wins for polyglot projects', async () => {
+    const dir = join(testRoot, 'polyglot')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: 'polyglot', scripts: { dev: 'vite' } }),
+    )
+    writeFileSync(join(dir, 'Cargo.toml'), '[package]\nname = "polyglot"\n')
+    const results = await scan()
+    expect(results.size).toBe(1)
+    const project = firstProject(results)
+    expect(project.projectType).toBe('node')
+  })
+
+  it('discovers mixed Node and Rust projects', async () => {
+    makeNodeProject('web-app')
+    makeRustProject('cli-tool')
+    const results = await scan()
+    expect(results.size).toBe(2)
+    const types = [...results.values()].map((p) => p.projectType).sort()
+    expect(types).toEqual(['node', 'rust'])
   })
 })

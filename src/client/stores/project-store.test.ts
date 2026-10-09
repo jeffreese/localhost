@@ -27,6 +27,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     id: 'test-project',
     name: 'Test Project',
     path: '/tmp/test-project',
+    projectType: 'node',
     packageManager: 'npm',
     devScript: 'dev',
     githubUrl: null,

@@ -109,9 +109,9 @@ date: 2026-10-05
 
 ## Epic 12: Project Type Registry
 
-- [ ] 12.1 Add `projectTypes` to config schema with Node + Rust defaults.
-- [ ] 12.2 Refactor scanner to iterate registry marker files instead of hardcoded package.json.
-- [ ] 12.3 Refactor listener-scanner to build lsof filter from registry processNames.
-- [ ] 12.4 Add GET/PUT /api/config/project-types endpoints.
-- [ ] 12.5 Update `<lh-project-card>`: project type indicator.
-- [ ] 12.6 Test with actual Rust projects: Cargo.toml detection, cargo run, cargo process matching.
+- [x] 12.1 Add `projectTypes` to config schema with Node + Rust defaults.
+- [x] 12.2 Refactor scanner to iterate registry marker files instead of hardcoded package.json.
+- [x] 12.3 Refactor listener-scanner to build lsof filter from registry processNames.
+- [x] 12.4 Add GET/PUT /api/config/project-types endpoints.
+- [x] 12.5 Update `<lh-project-card>`: project type indicator.
+- [x] 12.6 Test with actual Rust projects: Cargo.toml detection, cargo run, cargo process matching.

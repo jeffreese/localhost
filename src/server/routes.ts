@@ -4,6 +4,7 @@ import type {
   LocalhostConfig,
   Project,
   ProjectCache,
+  ProjectTypeEntry,
   ResourceUsage,
   Visibility,
 } from '@shared/types'
@@ -48,6 +49,7 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
     return {
       id,
       ...cached,
+      projectType: cached.projectType ?? 'node',
       visibility,
       listeners: enrichedListeners,
       processState: isRunning ? 'running' : 'stopped',
@@ -459,6 +461,57 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
       data: { sort: config.sort, customOrder: config.customOrder },
     })
     return c.json({ status: 'updated' })
+  })
+
+  // GET /api/config/project-types — return the project type registry
+  api.get('/config/project-types', async (c) => {
+    const config = await readConfig()
+    return c.json({ projectTypes: config.projectTypes })
+  })
+
+  // PUT /api/config/project-types — replace the project type registry
+  api.put('/config/project-types', async (c) => {
+    const body = await c.req.json<{ projectTypes: Record<string, ProjectTypeEntry> }>()
+
+    if (
+      !body.projectTypes ||
+      typeof body.projectTypes !== 'object' ||
+      Array.isArray(body.projectTypes)
+    ) {
+      return c.json({ error: 'projectTypes must be an object' }, 400)
+    }
+
+    for (const [marker, entry] of Object.entries(body.projectTypes)) {
+      if (!entry || typeof entry !== 'object') {
+        return c.json({ error: `Entry for "${marker}" must be an object` }, 400)
+      }
+      if (!entry.name || typeof entry.name !== 'string') {
+        return c.json({ error: `Entry for "${marker}" must have a "name" string` }, 400)
+      }
+      if (
+        marker.includes('/') ||
+        marker.includes('\\') ||
+        marker.includes('\0') ||
+        marker === '..' ||
+        marker === '.'
+      ) {
+        return c.json({ error: `Marker "${marker}" must be a bare filename` }, 400)
+      }
+      if (entry.processNames !== undefined) {
+        if (!Array.isArray(entry.processNames)) {
+          return c.json({ error: `processNames for "${marker}" must be an array` }, 400)
+        }
+        if (!entry.processNames.every((n: unknown) => typeof n === 'string' && n.length > 0)) {
+          return c.json({ error: `processNames for "${marker}" must be non-empty strings` }, 400)
+        }
+      }
+    }
+
+    await updateConfig((config) => {
+      config.projectTypes = body.projectTypes
+    })
+
+    return c.json({ updated: true })
   })
 
   // GET /api/events — SSE stream

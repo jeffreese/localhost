@@ -136,7 +136,7 @@ export class LhProjectCard extends LitElement {
             <h3 class="text-primary font-medium">${p.name}</h3>
           </div>
           <div class="flex items-center gap-xs">
-            <span class="text-xs text-muted">${p.packageManager}</span>
+            <span class="text-xs text-muted">${p.projectType}${p.projectType === 'node' ? ` · ${p.packageManager}` : ''}</span>
             <div class="relative">
               <button
                 class="text-muted hover:text-secondary hover:bg-surface-overlay text-xs px-sm py-xs rounded-md cursor-pointer"

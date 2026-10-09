@@ -1,6 +1,6 @@
 import { access, readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { PackageManager, ProjectCache } from '@shared/types'
+import type { PackageManager, ProjectCache, ProjectTypeEntry } from '@shared/types'
 import { readConfig, updateConfig } from './config-store'
 
 const MAX_DEPTH = 4
@@ -48,9 +48,47 @@ function isIgnored(path: string, ignoredPaths: string[]): boolean {
   return ignoredPaths.some((ignored) => path === ignored || path.startsWith(`${ignored}/`))
 }
 
+async function detectProject(
+  dir: string,
+  registry: Record<string, ProjectTypeEntry>,
+): Promise<ProjectCache | null> {
+  for (const [markerFile, typeEntry] of Object.entries(registry)) {
+    if (!(await fileExists(join(dir, markerFile)))) continue
+
+    let name = dir.split('/').pop() || 'unknown'
+    let packageManager: PackageManager = 'npm'
+    let devScript: string | null = typeEntry.defaultCommand ?? null
+
+    if (typeEntry.detectManager) {
+      try {
+        const content = await readFile(join(dir, markerFile), 'utf-8')
+        const parsed = JSON.parse(content) as Record<string, unknown>
+        if (parsed.name && typeof parsed.name === 'string') name = parsed.name
+        devScript = detectDevScript(parsed)
+      } catch {
+        continue
+      }
+      packageManager = await detectPackageManager(dir)
+    }
+
+    const githubUrl = await detectGithubUrl(dir)
+
+    return {
+      name,
+      path: dir,
+      projectType: typeEntry.name,
+      packageManager,
+      devScript,
+      githubUrl,
+    }
+  }
+  return null
+}
+
 async function walk(
   dir: string,
   ignoredPaths: string[],
+  registry: Record<string, ProjectTypeEntry>,
   depth: number,
 ): Promise<Map<string, ProjectCache>> {
   const results = new Map<string, ProjectCache>()
@@ -65,34 +103,20 @@ async function walk(
     return results
   }
 
-  if (entries.includes('package.json') && depth > 0) {
-    const pkgPath = join(dir, 'package.json')
-    try {
-      const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
-      const id = dir
-      const [packageManager, githubUrl] = await Promise.all([
-        detectPackageManager(dir),
-        detectGithubUrl(dir),
-      ])
-      results.set(id, {
-        name: pkg.name || dir.split('/').pop() || 'unknown',
-        path: dir,
-        packageManager,
-        devScript: detectDevScript(pkg),
-        githubUrl,
-      })
-    } catch {
-      // Skip unparseable package.json
+  if (depth > 0) {
+    const project = await detectProject(dir, registry)
+    if (project) {
+      results.set(dir, project)
     }
   }
 
-  // Skip common non-project directories
   const skipDirs = new Set([
     'node_modules',
     '.git',
     '.claude',
     'dist',
     'build',
+    'target',
     '.next',
     '.nuxt',
     'coverage',
@@ -103,7 +127,7 @@ async function walk(
     const fullPath = join(dir, entry)
     try {
       if ((await stat(fullPath)).isDirectory()) {
-        const nested = await walk(fullPath, ignoredPaths, depth + 1)
+        const nested = await walk(fullPath, ignoredPaths, registry, depth + 1)
         for (const [k, v] of nested) {
           results.set(k, v)
         }
@@ -118,14 +142,13 @@ async function walk(
 
 export async function scan(): Promise<Map<string, ProjectCache>> {
   const config = await readConfig()
-  return walk(config.scanRoot, config.ignored, 0)
+  return walk(config.scanRoot, config.ignored, config.projectTypes, 0)
 }
 
 export async function scanAndPersist(): Promise<Map<string, ProjectCache>> {
   const projects = await scan()
   await updateConfig((config) => {
     config.projects = Object.fromEntries(projects)
-    // Clean up stale entries from previously scanned skip directories
     for (const id of Object.keys(config.projects)) {
       if (id.includes('/.claude/')) {
         delete config.projects[id]

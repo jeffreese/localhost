@@ -68,3 +68,18 @@ Bug patterns discovered during development. The `/crucible:review` agent checks 
 **Occurrences:** 1 (PR #59)
 **Pattern:** A destructive UI action (delete, unassign-all, clear) fires immediately on click without a confirmation dialog. The no-permanent-deletion rule covers data, but group deletion destroys the group entity and all assignments in one unrecoverable click.
 **Fix:** Gate destructive actions behind `window.confirm()` or an undo mechanism, especially when the action has cascading side effects (e.g., unassigning all projects from a deleted group).
+
+## behavior-stale-cache-missing-field
+**Occurrences:** 1 (PR #60)
+**Pattern:** Adding a required field to a persisted type (`ProjectCache`) without providing a migration or fallback in consumers. Entries cached on disk before the migration lack the new field, and `...spread` propagates `undefined` to the UI. The field is always present in fresh scans, so testing never catches the gap — it only manifests on first load before a rescan.
+**Fix:** In the consumer that builds the public response, provide a fallback default: `cached.newField ?? defaultValue`. Or trigger a fresh scan on startup to repopulate stale entries.
+
+## behavior-loop-exit-on-partial-failure
+**Occurrences:** 1 (PR #60)
+**Pattern:** A loop that iterates candidates (registry entries, strategies, fallback options) uses `return` on a single candidate's failure, exiting the entire loop. The remaining candidates are never tried. The intent was to skip the bad entry, but `return null` exits the function, not just the iteration.
+**Fix:** Use `continue` to skip to the next iteration, not `return` to exit the loop. Reserve `return` for when the loop found a definitive answer.
+
+## behavior-skip-build-output-dirs
+**Occurrences:** 1 (PR #60)
+**Pattern:** Adding support for a new project type (Rust) without adding its build output directory (`target/`) to the scanner's skip list. The scanner descends into the build output tree, issuing thousands of unnecessary filesystem calls on every scan.
+**Fix:** When adding a new project type to the registry, identify its build artifact directory and add it to `skipDirs`. Common build output directories: `node_modules`, `target`, `build`, `dist`, `__pycache__`, `.gradle`, `bin/obj`.

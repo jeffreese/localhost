@@ -115,6 +115,7 @@ describe('routes', () => {
         '/tmp/my-app': {
           name: 'my-app',
           path: '/tmp/my-app',
+          projectType: 'node',
           packageManager: 'pnpm',
           devScript: 'dev',
           githubUrl: null,
@@ -138,6 +139,7 @@ describe('routes', () => {
         '/tmp/my-app': {
           name: 'my-app',
           path: '/tmp/my-app',
+          projectType: 'node',
           packageManager: 'pnpm',
           devScript: 'dev',
           githubUrl: null,
@@ -207,6 +209,7 @@ describe('routes', () => {
         '/tmp/my-app': {
           name: 'my-app',
           path: '/tmp/my-app',
+          projectType: 'node',
           packageManager: 'npm',
           devScript: 'dev',
           githubUrl: null,
@@ -228,6 +231,7 @@ describe('routes', () => {
         '/tmp/my-app': {
           name: 'my-app',
           path: '/tmp/my-app',
+          projectType: 'node',
           packageManager: 'pnpm' as const,
           devScript: 'dev',
           githubUrl: null,
@@ -326,6 +330,7 @@ describe('routes', () => {
         '/tmp/my-app': {
           name: 'my-app',
           path: '/tmp/my-app',
+          projectType: 'node',
           packageManager: 'pnpm',
           devScript: 'dev',
           githubUrl: null,
@@ -360,6 +365,7 @@ describe('routes', () => {
         '/tmp/my-app': {
           name: 'my-app',
           path: '/tmp/my-app',
+          projectType: 'node',
           packageManager: 'pnpm',
           devScript: 'dev',
           githubUrl: null,
@@ -748,6 +754,7 @@ describe('routes', () => {
           '/tmp/my-app': {
             name: 'my-app',
             path: '/tmp/my-app',
+            projectType: 'node',
             packageManager: 'pnpm',
             devScript: 'dev',
             githubUrl: null,
@@ -770,6 +777,7 @@ describe('routes', () => {
           '/tmp/my-app': {
             name: 'my-app',
             path: '/tmp/my-app',
+            projectType: 'node',
             packageManager: 'pnpm',
             devScript: 'dev',
             githubUrl: null,
@@ -780,6 +788,99 @@ describe('routes', () => {
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body[0].group).toBeNull()
+    })
+  })
+
+  describe('project type registry', () => {
+    beforeEach(() => {
+      resetConfig()
+    })
+
+    it('GET /api/config/project-types returns the registry', async () => {
+      const res = await app.request('/api/config/project-types')
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.projectTypes['package.json']).toEqual({
+        name: 'node',
+        detectManager: true,
+        processNames: ['node', 'bun', 'deno'],
+      })
+      expect(body.projectTypes['Cargo.toml']).toEqual({
+        name: 'rust',
+        defaultCommand: 'cargo run',
+        processNames: ['cargo'],
+      })
+    })
+
+    it('PUT /api/config/project-types replaces the registry', async () => {
+      const newTypes = {
+        'go.mod': { name: 'go', processNames: ['go'] },
+      }
+      const res = await app.request('/api/config/project-types', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectTypes: newTypes }),
+      })
+      expect(res.status).toBe(200)
+      expect(mockConfig.projectTypes).toEqual(newTypes)
+    })
+
+    it('PUT rejects missing name', async () => {
+      const res = await app.request('/api/config/project-types', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectTypes: { Makefile: {} } }),
+      })
+      expect(res.status).toBe(400)
+    })
+
+    it('PUT rejects path-traversal markers', async () => {
+      for (const marker of ['../etc', 'sub/dir', '..', '.']) {
+        const res = await app.request('/api/config/project-types', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectTypes: { [marker]: { name: 'bad' } } }),
+        })
+        expect(res.status).toBe(400)
+      }
+    })
+
+    it('PUT rejects non-array processNames', async () => {
+      const res = await app.request('/api/config/project-types', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectTypes: { Makefile: { name: 'make', processNames: 'make' } },
+        }),
+      })
+      expect(res.status).toBe(400)
+    })
+
+    it('PUT rejects non-string processNames elements', async () => {
+      const res = await app.request('/api/config/project-types', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectTypes: { Makefile: { name: 'make', processNames: [123] } } }),
+      })
+      expect(res.status).toBe(400)
+    })
+
+    it('PUT rejects empty projectTypes', async () => {
+      const res = await app.request('/api/config/project-types', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectTypes: 'not-an-object' }),
+      })
+      expect(res.status).toBe(400)
+    })
+
+    it('PUT rejects null entry', async () => {
+      const res = await app.request('/api/config/project-types', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectTypes: { Makefile: null } }),
+      })
+      expect(res.status).toBe(400)
     })
   })
 })

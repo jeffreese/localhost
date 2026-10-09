@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { matchListenersToProjects, parseCwdOutput, parseListenerOutput } from './listener-scanner'
+import {
+  buildCommandFlags,
+  matchListenersToProjects,
+  parseCwdOutput,
+  parseListenerOutput,
+} from './listener-scanner'
 
 describe('listener-scanner', () => {
   describe('parseListenerOutput', () => {
@@ -54,6 +59,37 @@ describe('listener-scanner', () => {
       const result = parseCwdOutput(output)
       expect(result.has(1234)).toBe(false)
       expect(result.get(5678)).toBe('/Users/jeff/Code/app')
+    })
+  })
+
+  describe('buildCommandFlags', () => {
+    it('collects unique process names from registry entries', () => {
+      const flags = buildCommandFlags({
+        'package.json': { name: 'node', processNames: ['node', 'bun', 'deno'] },
+        'Cargo.toml': { name: 'rust', processNames: ['cargo'] },
+      })
+      expect(flags).toContain('-c')
+      const names = flags.filter((_, i) => i % 2 === 1)
+      expect(names).toContain('node')
+      expect(names).toContain('bun')
+      expect(names).toContain('deno')
+      expect(names).toContain('cargo')
+    })
+
+    it('deduplicates process names across types', () => {
+      const flags = buildCommandFlags({
+        'package.json': { name: 'node', processNames: ['node'] },
+        'deno.json': { name: 'deno', processNames: ['node', 'deno'] },
+      })
+      const names = flags.filter((_, i) => i % 2 === 1)
+      expect(names.filter((n) => n === 'node')).toHaveLength(1)
+    })
+
+    it('returns empty array when no types have processNames', () => {
+      const flags = buildCommandFlags({
+        Makefile: { name: 'make' },
+      })
+      expect(flags).toEqual([])
     })
   })
 
