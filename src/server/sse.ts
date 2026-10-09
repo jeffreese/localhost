@@ -1,4 +1,4 @@
-import type { HealthStatus, LogLine, PortType } from '@shared/types'
+import type { GroupConfig, HealthStatus, LogLine, PortType } from '@shared/types'
 import type { Context } from 'hono'
 import { streamSSE } from 'hono/streaming'
 
@@ -27,6 +27,7 @@ export type SSEEvent =
       type: 'resource-update'
       data: { projectId: string; cpu: number; memory: number }
     }
+  | { type: 'groups-changed'; data: { groups: GroupConfig } }
 
 type SSEClient = {
   send: (event: SSEEvent, id: number) => void

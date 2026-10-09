@@ -1,4 +1,5 @@
 import type {
+  GroupConfig,
   Listener,
   LocalhostConfig,
   Project,
@@ -54,6 +55,7 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
       crashInfo: config.crashes[id] ?? null,
       healthStatus: isRunning ? (healthChecker.getStatus(id)?.status ?? null) : null,
       resourceUsage: isRunning ? (resourceMap[id] ?? null) : null,
+      group: config.groupConfig.assignments[id] ?? null,
     }
   }
   const api = new Hono()
@@ -221,6 +223,7 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
       port?: number
       devScript?: string
       healthCheckInterval?: number
+      group?: string | null
     }>()
 
     if (body.healthCheckInterval !== undefined) {
@@ -235,6 +238,7 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
 
     let healthCheckIntervalChanged = false
     let newInterval: number | undefined
+    let groupChanged = false
 
     await updateConfig((config) => {
       if (body.visibility) {
@@ -247,6 +251,18 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
         } else if (body.visibility === 'ignored') {
           config.ignored.push(projectId)
         }
+      }
+
+      if (body.group !== undefined) {
+        if (body.group === null) {
+          delete config.groupConfig.assignments[projectId]
+        } else {
+          const groupExists = config.groupConfig.groups.some((g) => g.id === body.group)
+          if (groupExists) {
+            config.groupConfig.assignments[projectId] = body.group
+          }
+        }
+        groupChanged = true
       }
 
       if (
@@ -293,8 +309,110 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
       }
     }
 
+    if (groupChanged) {
+      const config = await readConfig()
+      broadcast({ type: 'groups-changed', data: { groups: config.groupConfig } })
+    }
+
     broadcast({ type: 'project-updated', data: { projectId } })
     return c.json({ status: 'updated', projectId })
+  })
+
+  // POST /api/groups — create a project group
+  api.post('/groups', async (c) => {
+    const body = await c.req.json<{ name: string }>()
+
+    if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
+      return c.json({ error: 'Group name is required' }, 400)
+    }
+
+    const name = body.name.trim()
+    let created: GroupConfig['groups'][number] | null = null
+
+    await updateConfig((config) => {
+      if (config.groupConfig.groups.some((g) => g.name === name)) {
+        created = null
+        return
+      }
+      const id = crypto.randomUUID()
+      const group = { id, name, collapsed: false }
+      config.groupConfig.groups.push(group)
+      created = group
+    })
+
+    if (!created) {
+      return c.json({ error: 'A group with that name already exists' }, 400)
+    }
+
+    const config = await readConfig()
+    broadcast({ type: 'groups-changed', data: { groups: config.groupConfig } })
+    return c.json(created, 201)
+  })
+
+  // PATCH /api/groups/:id — update a group
+  api.patch('/groups/:id', async (c) => {
+    const groupId = c.req.param('id')
+    const body = await c.req.json<{ name?: string; collapsed?: boolean }>()
+
+    let found = false
+
+    await updateConfig((config) => {
+      const group = config.groupConfig.groups.find((g) => g.id === groupId)
+      if (!group) return
+
+      found = true
+      if (body.name !== undefined && typeof body.name === 'string' && body.name.trim()) {
+        group.name = body.name.trim()
+      }
+      if (body.collapsed !== undefined && typeof body.collapsed === 'boolean') {
+        group.collapsed = body.collapsed
+      }
+    })
+
+    if (!found) {
+      return c.json({ error: 'Group not found' }, 404)
+    }
+
+    const config = await readConfig()
+    broadcast({ type: 'groups-changed', data: { groups: config.groupConfig } })
+    return c.json({ updated: true })
+  })
+
+  // DELETE /api/groups/:id — delete a group
+  api.delete('/groups/:id', async (c) => {
+    const groupId = c.req.param('id')
+
+    let found = false
+    let unassignedCount = 0
+
+    await updateConfig((config) => {
+      const idx = config.groupConfig.groups.findIndex((g) => g.id === groupId)
+      if (idx === -1) return
+
+      found = true
+      config.groupConfig.groups.splice(idx, 1)
+
+      for (const [projectId, assignedGroupId] of Object.entries(config.groupConfig.assignments)) {
+        if (assignedGroupId === groupId) {
+          delete config.groupConfig.assignments[projectId]
+          unassignedCount++
+        }
+      }
+    })
+
+    if (!found) {
+      return c.json({ error: 'Group not found' }, 404)
+    }
+
+    const config = await readConfig()
+    broadcast({ type: 'groups-changed', data: { groups: config.groupConfig } })
+    return c.json({ deleted: true, unassignedCount })
+  })
+
+  // GET /api/groups — list all groups with their config
+  api.get('/groups', async (c) => {
+    const config = await readConfig()
+    return c.json(config.groupConfig)
   })
 
   // GET /api/preferences — get UI preferences (sort, etc.)

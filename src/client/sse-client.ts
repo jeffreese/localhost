@@ -28,6 +28,10 @@ export function connect(url = '/api/events'): void {
   )
   eventSource.addEventListener('log', (e) => emit('log', JSON.parse(e.data)))
   eventSource.addEventListener('health-changed', (e) => emit('health-changed', JSON.parse(e.data)))
+  eventSource.addEventListener('resource-update', (e) =>
+    emit('resource-update', JSON.parse(e.data)),
+  )
+  eventSource.addEventListener('groups-changed', (e) => emit('groups-changed', JSON.parse(e.data)))
 
   eventSource.onerror = () => {
     eventSource?.close()

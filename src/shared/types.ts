@@ -36,6 +36,7 @@ export interface Project {
   crashInfo: CrashInfo | null
   healthStatus: HealthStatus | null
   resourceUsage: ResourceUsage | null
+  group: string | null
 }
 
 /** A single captured line of process output. */

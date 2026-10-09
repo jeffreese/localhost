@@ -99,13 +99,13 @@ date: 2026-10-05
 
 ## Epic 11: Project Groups
 
-- [ ] 11.1 Add `groupConfig` to config schema with defaults. Add types.
-- [ ] 11.2 Implement group API: POST/PATCH/DELETE /api/groups.
-- [ ] 11.3 Add group assignment to PATCH /api/projects/:id.
-- [ ] 11.4 Broadcast `groups-changed` SSE event on mutations.
-- [ ] 11.5 Update `<lh-dashboard>`: grouped rendering with collapsible headers.
-- [ ] 11.6 Update drag-and-drop for within/across group ordering.
-- [ ] 11.7 Add group management UI: create/rename/delete, assign via drag or menu.
+- [x] 11.1 Add `groupConfig` to config schema with defaults. Add types.
+- [x] 11.2 Implement group API: POST/PATCH/DELETE /api/groups.
+- [x] 11.3 Add group assignment to PATCH /api/projects/:id.
+- [x] 11.4 Broadcast `groups-changed` SSE event on mutations.
+- [x] 11.5 Update `<lh-dashboard>`: grouped rendering with collapsible headers.
+- [x] 11.6 Update drag-and-drop for within/across group ordering.
+- [x] 11.7 Add group management UI: create/rename/delete, assign via drag or menu.
 
 ## Epic 12: Project Type Registry
 

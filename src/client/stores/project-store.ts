@@ -1,10 +1,18 @@
-import type { CrashInfo, HealthStatus, PortType, Project, Visibility } from '@shared/types'
+import type {
+  CrashInfo,
+  GroupConfig,
+  HealthStatus,
+  PortType,
+  Project,
+  Visibility,
+} from '@shared/types'
 import { off, on } from '../sse-client'
 
 type Listener = () => void
 
 const listeners = new Set<Listener>()
 let projects: Project[] = []
+let groupConfig: GroupConfig = { groups: [], assignments: {} }
 
 function notify() {
   for (const listener of listeners) {
@@ -133,7 +141,16 @@ function handleResourceUpdate(data: unknown) {
 }
 
 function handleProjectUpdated(_data: unknown) {
-  // Refetch on next getAll — for now just notify to trigger re-render
+  notify()
+}
+
+function handleGroupsChanged(data: unknown) {
+  const { groups } = data as { groups: GroupConfig }
+  groupConfig = groups
+  projects = projects.map((p) => ({
+    ...p,
+    group: groupConfig.assignments[p.id] ?? null,
+  }))
   notify()
 }
 
@@ -152,6 +169,7 @@ export const ProjectStore = {
     on('project-updated', handleProjectUpdated)
     on('health-changed', handleHealthChanged)
     on('resource-update', handleResourceUpdate)
+    on('groups-changed', handleGroupsChanged)
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {})
     }
@@ -166,6 +184,7 @@ export const ProjectStore = {
     off('project-updated', handleProjectUpdated)
     off('health-changed', handleHealthChanged)
     off('resource-update', handleResourceUpdate)
+    off('groups-changed', handleGroupsChanged)
   },
 
   getAll(): Project[] {
@@ -187,6 +206,15 @@ export const ProjectStore = {
 
   updateVisibility(projectId: string, visibility: Visibility) {
     projects = projects.map((p) => (p.id === projectId ? { ...p, visibility } : p))
+    notify()
+  },
+
+  getGroupConfig(): GroupConfig {
+    return groupConfig
+  },
+
+  setGroupConfig(config: GroupConfig) {
+    groupConfig = config
     notify()
   },
 }
