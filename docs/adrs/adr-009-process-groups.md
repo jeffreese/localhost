@@ -23,7 +23,7 @@ Additionally, stored PIDs in `config.pids` go stale — 9 of 10 observed entries
 1. **Spawn into new process groups** using `detached: true` (which calls `setsid()` on macOS, creating a new session and process group with PGID = child PID).
 2. **Stop via process group signal**: `process.kill(-pid, 'SIGTERM')` followed by SIGKILL escalation after 5s.
 3. **Verify PID ownership before signaling**: check that the PID is alive and its cwd matches the expected project path.
-4. **Register shutdown handlers** on the Localhost server process to SIGTERM all active process groups on exit.
+4. **Decouple spawned process lifecycle** — spawned processes survive server restarts and shutdowns. Only killed on explicit user request via the stop API.
 5. **Prune stale PIDs** from config on server startup.
 
 ## Alternatives Considered
@@ -42,8 +42,8 @@ Additionally, stored PIDs in `config.pids` go stale — 9 of 10 observed entries
 
 ### Positive
 
-- Single signal kills the entire process tree — no orphans
-- Localhost restart cleanly tears down all spawned services
+- Single signal kills the entire process tree on user-initiated stop — no orphans
+- Spawned services are no longer killed on server exit — localhost is a controller, not a parent
 - PID verification prevents signaling unrelated processes
 - Stale PID cleanup removes accumulated dead entries
 
@@ -57,7 +57,7 @@ Additionally, stored PIDs in `config.pids` go stale — 9 of 10 observed entries
 - `child_process.spawn` calls must use `detached: true` — flag any spawn without it
 - `process.kill(pid, ...)` (positive PID) should be flagged as suspicious — use `process.kill(-pid, ...)` (negative, process group) instead
 - Direct writes to `config.pids` must include PID verification logic
-- Shutdown handlers must exist in server entry point — flag if missing
+- Server shutdown must NOT kill spawned processes — they are decoupled
 
 ## Related Decisions
 

@@ -40,7 +40,7 @@ Six services, all async:
 
 - **Scanner** — Walks `~/Code/` using the project type registry to discover projects. Detects marker files (package.json, Cargo.toml, user-defined), package managers, dev scripts, GitHub URLs.
 - **Listener Scanner** — Async `lsof` calls enumerate OS TCP listeners, resolve cwds, match to project paths. Command filter built dynamically from the project type registry's `processNames` arrays.
-- **Process Manager** — Spawns dev servers into own process groups (`detached: true`). Stops via `kill(-pgid)` for clean tree shutdown. PID verification before signaling. Shutdown handlers on server exit.
+- **Process Manager** — Spawns dev servers into own process groups (`detached: true`). Stops via `kill(-pgid)` on user request only. PID verification before signaling. Server does not kill spawned processes on exit.
 - **Config Store** — Reads/writes `~/.localhost/config.json`. Atomic writes (temp + rename). Serialized read-modify-write (async queue). In-memory cache.
 - **Log Store** — Writes process stdout/stderr to `~/.localhost/logs/<project>.log`. Size-based rotation (10MB). Provides hydration endpoint for console drawer.
 - **SSE Broadcaster** — Pushes state changes to connected clients. 30s keepalive. Event types: scan-complete, process-started, process-stopped, process-crashed, port-detected, log, health-changed, resource-update, groups-changed.
@@ -76,7 +76,7 @@ Reactive stores (one per domain):
 ```
 src/
   server/           # Hono routes + services
-    index.ts        # Server entry, shutdown handlers
+    index.ts        # Server entry, graceful shutdown
     routes.ts       # REST API endpoints
     scanner.ts      # Project discovery
     listener-scanner.ts  # OS TCP listener enumeration
@@ -123,7 +123,7 @@ ADRs live in `docs/adrs/`. Enforcement rules in `.claude/rules/`.
 | 006 | Listener enumeration | Process state from lsof, not stored PIDs |
 | 007 | No permanent deletion | Hide/ignore only, both reversible |
 | 008 | Process console logs | Ring buffer + disk persistence |
-| 009 | Process group lifecycle | Detached spawn, group signal, PID verify, shutdown handlers |
+| 009 | Process group lifecycle | Detached spawn, group signal, PID verify, decoupled lifecycle |
 | 010 | Project type registry | Config-driven detection, not hardcoded |
 | 011 | Log persistence | Disk files, size rotation, hydration fix |
 | 012 | Background polling | 5s main loop, staggered tasks, per-project health timers |

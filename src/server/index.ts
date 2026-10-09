@@ -5,7 +5,7 @@ import { readConfig } from './config-store'
 import { HealthChecker } from './health-checker'
 import { closeAll as closeAllLogs } from './log-store'
 import { getPortType } from './port-probe'
-import { cleanupStalePids, getActiveProcesses } from './process-manager'
+import { cleanupStalePids } from './process-manager'
 import { createApi } from './routes'
 import { broadcast } from './sse'
 
@@ -66,18 +66,6 @@ poller.setOnDiff(async (diff, currentListeners) => {
   }
 })
 
-function killAllProcessGroups(signal: NodeJS.Signals) {
-  for (const child of getActiveProcesses().values()) {
-    if (child.pid !== undefined) {
-      try {
-        process.kill(-child.pid, signal)
-      } catch {
-        // Process group already dead
-      }
-    }
-  }
-}
-
 let shuttingDown = false
 
 async function gracefulShutdown() {
@@ -87,11 +75,6 @@ async function gracefulShutdown() {
   poller.stop()
   healthChecker.stopAll()
   await closeAllLogs()
-  killAllProcessGroups('SIGTERM')
-
-  await new Promise((resolve) => setTimeout(resolve, 3000))
-
-  killAllProcessGroups('SIGKILL')
 
   process.exit(0)
 }
@@ -109,9 +92,6 @@ if (process.env.NODE_ENV !== 'test') {
 
   process.on('SIGTERM', gracefulShutdown)
   process.on('SIGINT', gracefulShutdown)
-  process.on('exit', () => {
-    killAllProcessGroups('SIGKILL')
-  })
 }
 
 /** Test-only: reset the shutdown guard flag. */
@@ -119,6 +99,6 @@ export function __resetShutdownState() {
   shuttingDown = false
 }
 
-export { gracefulShutdown, healthChecker, killAllProcessGroups, poller }
+export { gracefulShutdown, healthChecker, poller }
 
 export default app
