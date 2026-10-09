@@ -110,16 +110,22 @@ export async function startProject(
     env.PORT = String(portOverride)
   }
 
-  const rawHandle = await openRawOutputFile(projectId)
+  const { handle: rawHandle, rawPath } = await openRawOutputFile(projectId)
   const rawFd = rawHandle.fd
 
+  let child: ChildProcess
   const [cmd, args] = buildCommand(packageManager, devScript)
-  const child = spawn(cmd, args, {
-    cwd: projectPath,
-    stdio: ['ignore', rawFd, rawFd],
-    detached: true,
-    env,
-  })
+  try {
+    child = spawn(cmd, args, {
+      cwd: projectPath,
+      stdio: ['ignore', rawFd, rawFd],
+      detached: true,
+      env,
+    })
+  } catch (err) {
+    await rawHandle.close()
+    throw err
+  }
 
   // Child has inherited the fd; close our copy
   await rawHandle.close()
@@ -174,7 +180,7 @@ export async function startProject(
     }
   }
 
-  const tail = tailRawOutput(projectId, handleTailLines)
+  const tail = tailRawOutput(projectId, handleTailLines, rawPath)
   activeTails.set(projectId, tail)
 
   child.on('exit', (code, signal) => {

@@ -151,23 +151,36 @@ export async function closeAll(): Promise<void> {
   }
 }
 
-function rawOutputPath(projectId: string): string {
-  return join(LOG_DIR, `${safeFilename(projectId)}.out`)
+const activeRawPaths = new Map<string, string>()
+
+function rawOutputPath(projectId: string, runId: string): string {
+  return join(LOG_DIR, `${safeFilename(projectId)}.${runId}.out`)
 }
 
 /**
  * Open a raw output file for stdio redirection. Returns a FileHandle
- * whose .fd property is suitable for spawn()'s stdio array. The caller
- * must close the handle after spawn returns — the child inherits the fd.
+ * whose .fd property is suitable for spawn()'s stdio array, plus the
+ * file path for the tailer. Uses a unique run ID to prevent races
+ * between overlapping start/stop cycles. The caller must close the
+ * handle after spawn returns — the child inherits the fd.
  */
-export async function openRawOutputFile(projectName: string): Promise<FileHandle> {
+export async function openRawOutputFile(
+  projectName: string,
+): Promise<{ handle: FileHandle; rawPath: string }> {
   await mkdir(LOG_DIR, { recursive: true })
-  return open(rawOutputPath(projectName), 'w')
+  const runId = `${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
+  const path = rawOutputPath(projectName, runId)
+  activeRawPaths.set(projectName, path)
+  const handle = await open(path, 'w')
+  return { handle, rawPath: path }
 }
 
 export async function removeRawOutputFile(projectName: string): Promise<void> {
+  const path = activeRawPaths.get(projectName)
+  if (!path) return
+  activeRawPaths.delete(projectName)
   try {
-    await unlink(rawOutputPath(projectName))
+    await unlink(path)
   } catch {
     // Already gone or never created
   }
@@ -177,6 +190,9 @@ export interface TailHandle {
   stop: () => void
 }
 
+const MAX_READ_CHUNK = 512 * 1024 // 512KB per tail read
+const MAX_PARTIAL_LEN = 16 * 1024 // 16KB partial line cap
+
 /**
  * Tail the raw output file, calling onLines for each batch of new lines.
  * Uses fs.watch for change notifications + incremental reads from the
@@ -185,8 +201,13 @@ export interface TailHandle {
 export function tailRawOutput(
   projectName: string,
   onLines: (lines: LogLine[]) => void,
+  rawPath?: string,
 ): TailHandle {
-  const filePath = rawOutputPath(projectName)
+  const resolvedPath = rawPath ?? activeRawPaths.get(projectName)
+  if (!resolvedPath) {
+    return { stop() {} }
+  }
+  const filePath = resolvedPath
   let offset = 0
   let reading = false
   let stopped = false
@@ -214,16 +235,21 @@ export function tailRawOutput(
         return
       }
 
+      const readSize = Math.min(fileSize - offset, MAX_READ_CHUNK)
       const handle = await open(filePath, 'r')
       try {
-        const buf = Buffer.alloc(fileSize - offset)
-        const { bytesRead } = await handle.read(buf, 0, buf.length, offset)
+        const buf = Buffer.alloc(readSize)
+        const { bytesRead } = await handle.read(buf, 0, readSize, offset)
         offset += bytesRead
         if (bytesRead === 0) return
 
         const text = partial + buf.toString('utf-8', 0, bytesRead)
         const parts = text.split('\n')
         partial = parts.pop() ?? ''
+        if (partial.length > MAX_PARTIAL_LEN) {
+          parts.push(partial)
+          partial = ''
+        }
 
         const ts = Date.now()
         const lines: LogLine[] = parts.map((line) => ({
@@ -234,6 +260,11 @@ export function tailRawOutput(
         if (lines.length > 0) onLines(lines)
       } finally {
         await handle.close()
+      }
+
+      // More data to read — schedule another pass
+      if (readSize < fileSize - (offset - readSize)) {
+        pendingRead = true
       }
     } catch (err) {
       console.error(`Tail read failed for ${projectName}:`, err)

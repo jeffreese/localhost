@@ -34,9 +34,10 @@ const mockTailStop = vi.fn()
 vi.mock('./log-store', () => ({
   appendLines: vi.fn().mockResolvedValue(undefined),
   closeLogs: vi.fn().mockResolvedValue(undefined),
-  openRawOutputFile: vi
-    .fn()
-    .mockResolvedValue({ fd: 42, close: vi.fn().mockResolvedValue(undefined) }),
+  openRawOutputFile: vi.fn().mockResolvedValue({
+    handle: { fd: 42, close: vi.fn().mockResolvedValue(undefined) },
+    rawPath: '/tmp/logs/test.123.out',
+  }),
   removeRawOutputFile: vi.fn().mockResolvedValue(undefined),
   tailRawOutput: vi.fn((_projectName: string, onLines: (lines: LogLine[]) => void) => {
     tailCallback = onLines
@@ -516,7 +517,11 @@ describe('process-manager', () => {
 
     it('starts tailRawOutput for log capture', async () => {
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
-      expect(mockTailRawOutput).toHaveBeenCalledWith('p1', expect.any(Function))
+      expect(mockTailRawOutput).toHaveBeenCalledWith(
+        'p1',
+        expect.any(Function),
+        '/tmp/logs/test.123.out',
+      )
     })
   })
 
