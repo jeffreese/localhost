@@ -28,9 +28,29 @@ vi.mock('./config-store', () => ({
   }),
 }))
 
+let tailCallback: ((lines: LogLine[]) => void) | null = null
+const mockTailStop = vi.fn()
+
 vi.mock('./log-store', () => ({
   appendLines: vi.fn().mockResolvedValue(undefined),
   closeLogs: vi.fn().mockResolvedValue(undefined),
+  openRawOutputFiles: vi.fn().mockResolvedValue({
+    stdout: {
+      handle: { fd: 42, close: vi.fn().mockResolvedValue(undefined) },
+      rawPath: '/tmp/logs/test.123.stdout.out',
+    },
+    stderr: {
+      handle: { fd: 43, close: vi.fn().mockResolvedValue(undefined) },
+      rawPath: '/tmp/logs/test.123.stderr.out',
+    },
+  }),
+  removeRawOutputFiles: vi.fn().mockResolvedValue(undefined),
+  tailRawOutput: vi.fn(
+    (_projectName: string, _stream: string, onLines: (lines: LogLine[]) => void) => {
+      tailCallback = onLines
+      return { stop: mockTailStop }
+    },
+  ),
 }))
 
 vi.mock('./listener-scanner', async (importOriginal) => {
@@ -44,8 +64,6 @@ vi.mock('./listener-scanner', async (importOriginal) => {
 
 /** Minimal ChildProcess stand-in driven by tests. */
 class FakeChild extends EventEmitter {
-  stdout = new EventEmitter()
-  stderr = new EventEmitter()
   pid = 12345
   kill = vi.fn()
 }
@@ -61,7 +79,6 @@ vi.mock('node:child_process', () => ({
 
 const {
   detectAllListeners,
-  assembleLines,
   startProject,
   stopProject,
   verifyPid,
@@ -73,7 +90,13 @@ const {
   __resetStoppingProjects,
 } = await import('./process-manager')
 
-const { appendLines: mockAppendLines, closeLogs: mockCloseLogs } = await import('./log-store')
+const {
+  appendLines: mockAppendLines,
+  closeLogs: mockCloseLogs,
+  openRawOutputFiles: mockOpenRawOutputFiles,
+  removeRawOutputFiles: mockRemoveRawOutputFiles,
+  tailRawOutput: mockTailRawOutput,
+} = await import('./log-store')
 
 function resetConfig(overrides: Partial<LocalhostConfig> = {}) {
   storedConfig = {
@@ -135,6 +158,7 @@ describe('process-manager', () => {
           '/tmp/my-app': {
             name: 'my-app',
             path: '/tmp/my-app',
+            projectType: 'node',
             packageManager: 'npm',
             devScript: 'dev',
             githubUrl: null,
@@ -143,29 +167,6 @@ describe('process-manager', () => {
       })
       const result = await detectAllListeners()
       expect(result).toEqual({})
-    })
-  })
-
-  describe('assembleLines', () => {
-    it('splits a chunk ending with newline into complete lines with empty partial', () => {
-      const { lines, partial } = assembleLines('', 'one\ntwo\n', 'stdout', 1000)
-      expect(lines.map((l) => l.text)).toEqual(['one', 'two'])
-      expect(partial).toBe('')
-    })
-
-    it('retains a trailing partial line across calls', () => {
-      const first = assembleLines('', 'hello wor', 'stdout', 1000)
-      expect(first.lines).toEqual([])
-      expect(first.partial).toBe('hello wor')
-
-      const second = assembleLines(first.partial, 'ld\nnext', 'stdout', 1001)
-      expect(second.lines.map((l) => l.text)).toEqual(['hello world'])
-      expect(second.partial).toBe('next')
-    })
-
-    it('tags each line with the correct stream and timestamp', () => {
-      const { lines } = assembleLines('', 'err!\n', 'stderr', 2000)
-      expect(lines).toEqual<LogLine[]>([{ stream: 'stderr', ts: 2000, text: 'err!' }])
     })
   })
 
@@ -240,18 +241,24 @@ describe('process-manager', () => {
     beforeEach(() => {
       __resetLogBuffers()
       __resetActiveProcesses()
+      tailCallback = null
+      mockTailStop.mockClear()
       fakeChild = new FakeChild()
       spawnMock.mockReset()
       spawnMock.mockReturnValue(fakeChild)
+      vi.mocked(mockOpenRawOutputFiles).mockClear()
+      vi.mocked(mockRemoveRawOutputFiles).mockClear()
+      vi.mocked(mockTailRawOutput).mockClear()
       resetConfig()
     })
 
-    it('spawns with detached: true and explicit stdio pipes', async () => {
+    it('spawns with detached: true and fd-based stdio', async () => {
       await startProject('p1', '/tmp/p1', 'pnpm', 'dev')
 
+      expect(mockOpenRawOutputFiles).toHaveBeenCalledWith('p1')
       expect(spawnMock).toHaveBeenCalledWith('pnpm', ['dev'], {
         cwd: '/tmp/p1',
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['ignore', 42, 43],
         detached: true,
         env: expect.objectContaining({ FORCE_COLOR: '1' }),
       })
@@ -301,7 +308,7 @@ describe('process-manager', () => {
 
       expect(spawnMock).toHaveBeenCalledWith('pnpm', ['dev'], {
         cwd: '/tmp/p1',
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['ignore', 42, 43],
         detached: true,
         env: expect.objectContaining({ FORCE_COLOR: '1', PORT: '4000' }),
       })
@@ -410,17 +417,31 @@ describe('process-manager', () => {
     beforeEach(() => {
       __resetLogBuffers()
       __resetActiveProcesses()
+      tailCallback = null
+      mockTailStop.mockClear()
       fakeChild = new FakeChild()
       spawnMock.mockReset()
       spawnMock.mockReturnValue(fakeChild)
       vi.mocked(mockAppendLines).mockClear()
       vi.mocked(mockCloseLogs).mockClear()
+      vi.mocked(mockRemoveRawOutputFiles).mockClear()
+      vi.mocked(mockTailRawOutput).mockClear()
       resetConfig()
     })
 
-    it('captures stdout lines into the project buffer', async () => {
+    function emitTailLines(texts: string[]) {
+      expect(tailCallback).not.toBeNull()
+      const lines: LogLine[] = texts.map((text) => ({
+        stream: 'stdout' as const,
+        ts: Date.now(),
+        text,
+      }))
+      tailCallback?.(lines)
+    }
+
+    it('captures lines from tail callback into the project buffer', async () => {
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
-      fakeChild.stdout.emit('data', Buffer.from('line one\nline two\n'))
+      emitTailLines(['line one', 'line two'])
 
       const logs = getLogs('p1')
       expect(logs.map((l) => l.text)).toEqual(['line one', 'line two'])
@@ -437,8 +458,8 @@ describe('process-manager', () => {
 
     it('caps the buffer at 500 lines, dropping the oldest', async () => {
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
-      const chunk = `${Array.from({ length: 600 }, (_, i) => `line ${i}`).join('\n')}\n`
-      fakeChild.stdout.emit('data', Buffer.from(chunk))
+      const texts = Array.from({ length: 600 }, (_, i) => `line ${i}`)
+      emitTailLines(texts)
 
       const logs = getLogs('p1')
       expect(logs).toHaveLength(500)
@@ -446,35 +467,29 @@ describe('process-manager', () => {
       expect(logs[logs.length - 1].text).toBe('line 599')
     })
 
-    it('flushes a partial-line tail on process exit', async () => {
+    it('stops tail and closes log file on process exit', async () => {
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
-      fakeChild.stdout.emit('data', Buffer.from('complete\nno-newline-tail'))
+      emitTailLines(['output'])
       fakeChild.emit('exit', 0, null)
 
-      const logs = getLogs('p1')
-      expect(logs.map((l) => l.text)).toEqual(['complete', 'no-newline-tail'])
-      expect(mockAppendLines).toHaveBeenLastCalledWith(
-        'p1',
-        expect.arrayContaining([expect.objectContaining({ text: 'no-newline-tail' })]),
-      )
+      expect(mockTailStop).toHaveBeenCalled()
       await vi.waitFor(() => {
         expect(mockCloseLogs).toHaveBeenCalledWith('p1')
       })
     })
 
-    it('closes log file on process exit after flushing tail', async () => {
+    it('cleans up raw output files on process exit', async () => {
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
-      fakeChild.stdout.emit('data', Buffer.from('output\n'))
       fakeChild.emit('exit', 0, null)
 
       await vi.waitFor(() => {
-        expect(mockCloseLogs).toHaveBeenCalledWith('p1')
+        expect(mockRemoveRawOutputFiles).toHaveBeenCalledWith('p1')
       })
     })
 
     it('retains the buffer after the process exits', async () => {
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
-      fakeChild.stdout.emit('data', Buffer.from('hello\n'))
+      emitTailLines(['hello'])
       fakeChild.emit('exit', 0, null)
 
       expect(hasLogs('p1')).toBe(true)
@@ -483,10 +498,9 @@ describe('process-manager', () => {
 
     it('clears the buffer when a project is restarted', async () => {
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
-      fakeChild.stdout.emit('data', Buffer.from('first run\n'))
+      emitTailLines(['first run'])
       fakeChild.emit('exit', 0, null)
 
-      // Fresh fake for the second run so the original's listeners don't fire.
       fakeChild = new FakeChild()
       spawnMock.mockReturnValue(fakeChild)
       await startProject('p1', '/tmp/p1', 'npm', 'dev')
@@ -498,10 +512,9 @@ describe('process-manager', () => {
     it('batches new lines and invokes onLogs after the debounce window', async () => {
       const onLogs = vi.fn()
       await startProject('p1', '/tmp/p1', 'npm', 'dev', undefined, onLogs)
-      fakeChild.stdout.emit('data', Buffer.from('one\ntwo\n'))
-      fakeChild.stdout.emit('data', Buffer.from('three\n'))
+      emitTailLines(['one', 'two'])
+      emitTailLines(['three'])
 
-      // Batch window is ~50ms; wait a bit longer to be safe.
       await new Promise((resolve) => setTimeout(resolve, 100))
 
       expect(onLogs).toHaveBeenCalledTimes(1)
@@ -509,15 +522,35 @@ describe('process-manager', () => {
       expect(pid).toBe('p1')
       expect((lines as LogLine[]).map((l) => l.text)).toEqual(['one', 'two', 'three'])
     })
+
+    it('starts tailRawOutput for stdout and stderr', async () => {
+      await startProject('p1', '/tmp/p1', 'npm', 'dev')
+      expect(mockTailRawOutput).toHaveBeenCalledWith(
+        'p1',
+        'stdout',
+        expect.any(Function),
+        '/tmp/logs/test.123.stdout.out',
+      )
+      expect(mockTailRawOutput).toHaveBeenCalledWith(
+        'p1',
+        'stderr',
+        expect.any(Function),
+        '/tmp/logs/test.123.stderr.out',
+      )
+    })
   })
 
   describe('stopProject', () => {
     beforeEach(() => {
       __resetLogBuffers()
       __resetActiveProcesses()
+      tailCallback = null
+      mockTailStop.mockClear()
       fakeChild = new FakeChild()
       spawnMock.mockReset()
       spawnMock.mockReturnValue(fakeChild)
+      vi.mocked(mockOpenRawOutputFiles).mockClear()
+      vi.mocked(mockTailRawOutput).mockClear()
       resetConfig()
     })
 
@@ -534,6 +567,7 @@ describe('process-manager', () => {
           p1: {
             name: 'p1',
             path: '/tmp/p1',
+            projectType: 'node',
             packageManager: 'npm',
             devScript: 'dev',
             githubUrl: null,
@@ -568,6 +602,7 @@ describe('process-manager', () => {
           p1: {
             name: 'p1',
             path: '/tmp/p1',
+            projectType: 'node',
             packageManager: 'npm',
             devScript: 'dev',
             githubUrl: null,
@@ -591,6 +626,7 @@ describe('process-manager', () => {
           p1: {
             name: 'p1',
             path: '/tmp/p1',
+            projectType: 'node',
             packageManager: 'npm',
             devScript: 'dev',
             githubUrl: null,
@@ -704,6 +740,7 @@ describe('process-manager', () => {
           p1: {
             name: 'p1',
             path: '/tmp/p1',
+            projectType: 'node',
             packageManager: 'npm',
             devScript: 'dev',
             githubUrl: null,
@@ -763,6 +800,7 @@ describe('process-manager', () => {
           p1: {
             name: 'p1',
             path: '/tmp/p1',
+            projectType: 'node',
             packageManager: 'npm',
             devScript: 'dev',
             githubUrl: null,
@@ -788,6 +826,7 @@ describe('process-manager', () => {
           p1: {
             name: 'p1',
             path: '/tmp/p1',
+            projectType: 'node',
             packageManager: 'npm',
             devScript: 'dev',
             githubUrl: null,
@@ -810,6 +849,7 @@ describe('process-manager', () => {
           p1: {
             name: 'p1',
             path: '/tmp/p1',
+            projectType: 'node',
             packageManager: 'npm',
             devScript: 'dev',
             githubUrl: null,
@@ -842,6 +882,7 @@ describe('process-manager', () => {
           p1: {
             name: 'p1',
             path: '/tmp/p1',
+            projectType: 'node',
             packageManager: 'npm',
             devScript: 'dev',
             githubUrl: null,
@@ -888,6 +929,7 @@ describe('process-manager', () => {
           p1: {
             name: 'p1',
             path: '/tmp/p1',
+            projectType: 'node',
             packageManager: 'npm',
             devScript: 'dev',
             githubUrl: null,
@@ -895,6 +937,7 @@ describe('process-manager', () => {
           p2: {
             name: 'p2',
             path: '/tmp/p2',
+            projectType: 'node',
             packageManager: 'npm',
             devScript: 'dev',
             githubUrl: null,

@@ -1,4 +1,5 @@
-import { type FileHandle, mkdir, open, readFile, rename, stat } from 'node:fs/promises'
+import { type FSWatcher, watch } from 'node:fs'
+import { type FileHandle, mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { LogLine } from '@shared/types'
@@ -150,11 +151,192 @@ export async function closeAll(): Promise<void> {
   }
 }
 
+const activeRawPaths = new Map<string, { stdout: string; stderr: string }>()
+
+function rawOutputPath(projectId: string, runId: string, stream: 'stdout' | 'stderr'): string {
+  return join(LOG_DIR, `${safeFilename(projectId)}.${runId}.${stream}.out`)
+}
+
+export interface RawOutputFiles {
+  stdout: { handle: FileHandle; rawPath: string }
+  stderr: { handle: FileHandle; rawPath: string }
+}
+
+/**
+ * Open raw output files for stdio redirection. Returns separate handles
+ * for stdout and stderr whose .fd properties are suitable for spawn()'s
+ * stdio array. Uses a unique run ID to prevent races between overlapping
+ * start/stop cycles. The caller must close both handles after spawn
+ * returns — the child inherits the fds independently.
+ */
+export async function openRawOutputFiles(projectName: string): Promise<RawOutputFiles> {
+  await mkdir(LOG_DIR, { recursive: true })
+  const runId = `${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
+  const stdoutPath = rawOutputPath(projectName, runId, 'stdout')
+  const stderrPath = rawOutputPath(projectName, runId, 'stderr')
+  activeRawPaths.set(projectName, { stdout: stdoutPath, stderr: stderrPath })
+  const [stdoutHandle, stderrHandle] = await Promise.all([
+    open(stdoutPath, 'w'),
+    open(stderrPath, 'w'),
+  ])
+  return {
+    stdout: { handle: stdoutHandle, rawPath: stdoutPath },
+    stderr: { handle: stderrHandle, rawPath: stderrPath },
+  }
+}
+
+export async function removeRawOutputFiles(projectName: string): Promise<void> {
+  const paths = activeRawPaths.get(projectName)
+  if (!paths) return
+  activeRawPaths.delete(projectName)
+  await Promise.all([unlink(paths.stdout).catch(() => {}), unlink(paths.stderr).catch(() => {})])
+}
+
+export interface TailHandle {
+  stop: () => void
+}
+
+const MAX_READ_CHUNK = 512 * 1024 // 512KB per tail read
+const MAX_PARTIAL_LEN = 16 * 1024 // 16KB partial line cap
+
+/**
+ * Tail the raw output file, calling onLines for each batch of new lines.
+ * Uses fs.watch for change notifications + incremental reads from the
+ * last known offset.
+ */
+export function tailRawOutput(
+  projectName: string,
+  stream: 'stdout' | 'stderr',
+  onLines: (lines: LogLine[]) => void,
+  rawPath?: string,
+): TailHandle {
+  const paths = activeRawPaths.get(projectName)
+  const resolvedPath = rawPath ?? paths?.[stream]
+  if (!resolvedPath) {
+    return { stop() {} }
+  }
+  const filePath = resolvedPath
+  let offset = 0
+  let reading = false
+  let stopped = false
+  let watcher: FSWatcher | null = null
+  let pendingRead = false
+  let partial = ''
+
+  async function readNewContent() {
+    if (reading || stopped) {
+      pendingRead = true
+      return
+    }
+    reading = true
+    try {
+      let fileSize: number
+      try {
+        const s = await stat(filePath)
+        fileSize = s.size
+      } catch {
+        return
+      }
+
+      if (fileSize <= offset) {
+        if (fileSize < offset) offset = 0
+        return
+      }
+
+      const readSize = Math.min(fileSize - offset, MAX_READ_CHUNK)
+      const handle = await open(filePath, 'r')
+      try {
+        const buf = Buffer.alloc(readSize)
+        const { bytesRead } = await handle.read(buf, 0, readSize, offset)
+        offset += bytesRead
+        if (bytesRead === 0) return
+
+        const text = partial + buf.toString('utf-8', 0, bytesRead)
+        const parts = text.split('\n')
+        partial = parts.pop() ?? ''
+        if (partial.length > MAX_PARTIAL_LEN) {
+          parts.push(partial)
+          partial = ''
+        }
+
+        const ts = Date.now()
+        const lines: LogLine[] = parts.map((line) => ({
+          stream,
+          ts,
+          text: line,
+        }))
+        if (lines.length > 0) onLines(lines)
+      } finally {
+        await handle.close()
+      }
+
+      // More data to read — schedule another pass
+      if (readSize < fileSize - (offset - readSize)) {
+        pendingRead = true
+      }
+    } catch (err) {
+      console.error(`Tail read failed for ${projectName}:`, err)
+    } finally {
+      reading = false
+      if (pendingRead && !stopped) {
+        pendingRead = false
+        readNewContent().catch((err) =>
+          console.error(`Tail re-read failed for ${projectName}:`, err),
+        )
+      }
+    }
+  }
+
+  function onFileChange() {
+    readNewContent().catch((err) =>
+      console.error(`Tail watch callback failed for ${projectName}:`, err),
+    )
+  }
+
+  function startWatcher() {
+    try {
+      watcher = watch(filePath, onFileChange)
+      watcher.on('error', () => {})
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  if (!startWatcher()) {
+    const pollInterval = setInterval(() => {
+      if (stopped) {
+        clearInterval(pollInterval)
+        return
+      }
+      if (startWatcher()) {
+        clearInterval(pollInterval)
+        onFileChange()
+      }
+    }, 200)
+  }
+
+  return {
+    stop() {
+      stopped = true
+      if (watcher) {
+        watcher.close()
+        watcher = null
+      }
+      if (partial.length > 0) {
+        onLines([{ stream, ts: Date.now(), text: partial }])
+        partial = ''
+      }
+    },
+  }
+}
+
 export { LOG_DIR }
 
 export function __resetLogStore(): void {
   fileHandles.clear()
   writeLocks.clear()
+  activeRawPaths.clear()
 }
 
 export function __setHandle(projectName: string, handle: FileHandle): void {

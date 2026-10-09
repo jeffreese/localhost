@@ -74,3 +74,8 @@
 **Friction:** Crucible required 2 rounds — R1: stale cached entries missing projectType rendered "undefined", detectProject return null on parse failure prevented fallback to other registry entries, Rust target/ not in skipDirs, ../. bypassed marker validation, no endpoint tests.
 **Root cause:** Data migration gap (new required field on persisted type without fallback), loop exit semantics (return vs continue), incomplete skip list for new project type, and insufficient input validation coverage.
 **Category:** crucible-rework
+
+## 2026-10-08 — fix/file-based-stdio
+**Friction:** Crucible review required 3 rounds (5 fix-now R1, 1 fix-now R2, LGTM R3)
+**Root cause:** New module-level state maps (activeRawPaths, activeTails) weren't reset in test helpers; closeLogs/appendToLogFile async ordering wasn't preserved from the old pipe-based code; single fd for both stdout/stderr lost stream differentiation
+**Category:** crucible-rework
