@@ -1,4 +1,5 @@
-import { type FileHandle, mkdir, open, readFile, rename, stat } from 'node:fs/promises'
+import { type FSWatcher, watch } from 'node:fs'
+import { type FileHandle, mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { LogLine } from '@shared/types'
@@ -147,6 +148,147 @@ export async function closeAll(): Promise<void> {
     } catch (err) {
       console.error('Failed to close log handle:', err)
     }
+  }
+}
+
+function rawOutputPath(projectId: string): string {
+  return join(LOG_DIR, `${safeFilename(projectId)}.out`)
+}
+
+/**
+ * Open a raw output file for stdio redirection. Returns a FileHandle
+ * whose .fd property is suitable for spawn()'s stdio array. The caller
+ * must close the handle after spawn returns — the child inherits the fd.
+ */
+export async function openRawOutputFile(projectName: string): Promise<FileHandle> {
+  await mkdir(LOG_DIR, { recursive: true })
+  return open(rawOutputPath(projectName), 'w')
+}
+
+export async function removeRawOutputFile(projectName: string): Promise<void> {
+  try {
+    await unlink(rawOutputPath(projectName))
+  } catch {
+    // Already gone or never created
+  }
+}
+
+export interface TailHandle {
+  stop: () => void
+}
+
+/**
+ * Tail the raw output file, calling onLines for each batch of new lines.
+ * Uses fs.watch for change notifications + incremental reads from the
+ * last known offset.
+ */
+export function tailRawOutput(
+  projectName: string,
+  onLines: (lines: LogLine[]) => void,
+): TailHandle {
+  const filePath = rawOutputPath(projectName)
+  let offset = 0
+  let reading = false
+  let stopped = false
+  let watcher: FSWatcher | null = null
+  let pendingRead = false
+  let partial = ''
+
+  async function readNewContent() {
+    if (reading || stopped) {
+      pendingRead = true
+      return
+    }
+    reading = true
+    try {
+      let fileSize: number
+      try {
+        const s = await stat(filePath)
+        fileSize = s.size
+      } catch {
+        return
+      }
+
+      if (fileSize <= offset) {
+        if (fileSize < offset) offset = 0
+        return
+      }
+
+      const handle = await open(filePath, 'r')
+      try {
+        const buf = Buffer.alloc(fileSize - offset)
+        const { bytesRead } = await handle.read(buf, 0, buf.length, offset)
+        offset += bytesRead
+        if (bytesRead === 0) return
+
+        const text = partial + buf.toString('utf-8', 0, bytesRead)
+        const parts = text.split('\n')
+        partial = parts.pop() ?? ''
+
+        const ts = Date.now()
+        const lines: LogLine[] = parts.map((line) => ({
+          stream: 'stdout' as const,
+          ts,
+          text: line,
+        }))
+        if (lines.length > 0) onLines(lines)
+      } finally {
+        await handle.close()
+      }
+    } catch (err) {
+      console.error(`Tail read failed for ${projectName}:`, err)
+    } finally {
+      reading = false
+      if (pendingRead && !stopped) {
+        pendingRead = false
+        readNewContent().catch((err) =>
+          console.error(`Tail re-read failed for ${projectName}:`, err),
+        )
+      }
+    }
+  }
+
+  function onFileChange() {
+    readNewContent().catch((err) =>
+      console.error(`Tail watch callback failed for ${projectName}:`, err),
+    )
+  }
+
+  function startWatcher() {
+    try {
+      watcher = watch(filePath, onFileChange)
+      watcher.on('error', () => {})
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  if (!startWatcher()) {
+    const pollInterval = setInterval(() => {
+      if (stopped) {
+        clearInterval(pollInterval)
+        return
+      }
+      if (startWatcher()) {
+        clearInterval(pollInterval)
+        onFileChange()
+      }
+    }, 200)
+  }
+
+  return {
+    stop() {
+      stopped = true
+      if (watcher) {
+        watcher.close()
+        watcher = null
+      }
+      if (partial.length > 0) {
+        onLines([{ stream: 'stdout', ts: Date.now(), text: partial }])
+        partial = ''
+      }
+    },
   }
 }
 

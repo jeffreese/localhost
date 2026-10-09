@@ -2,9 +2,17 @@ import { type ChildProcess, execFile, spawn } from 'node:child_process'
 import type { CrashInfo, Listener, LogLine, PackageManager } from '@shared/types'
 import { readConfig, updateConfig } from './config-store'
 import { enumerateListeners, matchListenersToProjects, parseCwdOutput } from './listener-scanner'
-import { appendLines as appendToLogFile, closeLogs } from './log-store'
+import {
+  type TailHandle,
+  appendLines as appendToLogFile,
+  closeLogs,
+  openRawOutputFile,
+  removeRawOutputFile,
+  tailRawOutput,
+} from './log-store'
 
 const activeProcesses = new Map<string, ChildProcess>()
+const activeTails = new Map<string, TailHandle>()
 
 const stoppingProjects = new Set<string>()
 
@@ -62,23 +70,6 @@ function appendLogLines(projectId: string, lines: LogLine[]) {
   }
 }
 
-/**
- * Splits a chunk of stream data into complete lines, preserving any trailing
- * partial line as state for the next call. Exported for testing.
- */
-export function assembleLines(
-  partialIn: string,
-  chunk: string,
-  stream: 'stdout' | 'stderr',
-  ts: number,
-): { lines: LogLine[]; partial: string } {
-  const text = partialIn + chunk
-  const parts = text.split('\n')
-  const partial = parts.pop() ?? ''
-  const lines: LogLine[] = parts.map((line) => ({ stream, ts, text: line }))
-  return { lines, partial }
-}
-
 function buildCommand(packageManager: PackageManager, script: string): [string, string[]] {
   switch (packageManager) {
     case 'pnpm':
@@ -119,13 +110,19 @@ export async function startProject(
     env.PORT = String(portOverride)
   }
 
+  const rawHandle = await openRawOutputFile(projectId)
+  const rawFd = rawHandle.fd
+
   const [cmd, args] = buildCommand(packageManager, devScript)
   const child = spawn(cmd, args, {
     cwd: projectPath,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', rawFd, rawFd],
     detached: true,
     env,
   })
+
+  // Child has inherited the fd; close our copy
+  await rawHandle.close()
 
   activeProcesses.set(projectId, child)
 
@@ -138,7 +135,6 @@ export async function startProject(
   }
 
   let portFound = false
-  const partial = { stdout: '', stderr: '' }
   let pendingBatch: LogLine[] = []
   let batchTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -158,23 +154,13 @@ export async function startProject(
     batchTimer = setTimeout(flushBatch, LOG_BATCH_WINDOW_MS)
   }
 
-  const handleChunk = (stream: 'stdout' | 'stderr', data: Buffer) => {
-    const { lines: newLines, partial: nextPartial } = assembleLines(
-      partial[stream],
-      data.toString(),
-      stream,
-      Date.now(),
+  const handleTailLines = (newLines: LogLine[]) => {
+    appendLogLines(projectId, newLines)
+    appendToLogFile(projectId, newLines).catch((err) =>
+      console.error(`Log file write failed for ${projectId}:`, err),
     )
-    partial[stream] = nextPartial
-
-    if (newLines.length > 0) {
-      appendLogLines(projectId, newLines)
-      appendToLogFile(projectId, newLines).catch((err) =>
-        console.error(`Log file write failed for ${projectId}:`, err),
-      )
-      pendingBatch.push(...newLines)
-      scheduleBatchFlush()
-    }
+    pendingBatch.push(...newLines)
+    scheduleBatchFlush()
 
     if (!portFound) {
       for (const { text } of newLines) {
@@ -188,36 +174,23 @@ export async function startProject(
     }
   }
 
-  child.stdout?.on('data', (d) => handleChunk('stdout', d))
-  child.stderr?.on('data', (d) => handleChunk('stderr', d))
+  const tail = tailRawOutput(projectId, handleTailLines)
+  activeTails.set(projectId, tail)
 
   child.on('exit', (code, signal) => {
-    // Flush any partial-line tails so the final line isn't silently lost.
-    const tailLines: LogLine[] = []
-    for (const stream of ['stdout', 'stderr'] as const) {
-      if (partial[stream].length > 0) {
-        tailLines.push({ stream, ts: Date.now(), text: partial[stream] })
-        partial[stream] = ''
-      }
-    }
-    if (tailLines.length > 0) {
-      appendLogLines(projectId, tailLines)
-      pendingBatch.push(...tailLines)
+    const tailHandle = activeTails.get(projectId)
+    if (tailHandle) {
+      tailHandle.stop()
+      activeTails.delete(projectId)
     }
     flushBatch()
 
-    const closeLogFile = () =>
-      closeLogs(projectId).catch((err) =>
-        console.error(`Log file close failed for ${projectId}:`, err),
-      )
-
-    if (tailLines.length > 0) {
-      appendToLogFile(projectId, tailLines)
-        .catch((err) => console.error(`Log file write failed for ${projectId}:`, err))
-        .finally(closeLogFile)
-    } else {
-      closeLogFile()
-    }
+    closeLogs(projectId).catch((err) =>
+      console.error(`Log file close failed for ${projectId}:`, err),
+    )
+    removeRawOutputFile(projectId).catch((err) =>
+      console.error(`Raw output cleanup failed for ${projectId}:`, err),
+    )
 
     const crashed = !isStopping(projectId)
     const crashTimestamp = new Date().toISOString()
