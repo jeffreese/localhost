@@ -66,7 +66,7 @@ async function detectProject(
         if (parsed.name && typeof parsed.name === 'string') name = parsed.name
         devScript = detectDevScript(parsed)
       } catch {
-        return null
+        continue
       }
       packageManager = await detectPackageManager(dir)
     }
@@ -116,6 +116,7 @@ async function walk(
     '.claude',
     'dist',
     'build',
+    'target',
     '.next',
     '.nuxt',
     'coverage',

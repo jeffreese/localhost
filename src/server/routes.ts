@@ -49,6 +49,7 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
     return {
       id,
       ...cached,
+      projectType: cached.projectType ?? 'node',
       visibility,
       listeners: enrichedListeners,
       processState: isRunning ? 'running' : 'stopped',
@@ -487,7 +488,13 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
       if (!entry.name || typeof entry.name !== 'string') {
         return c.json({ error: `Entry for "${marker}" must have a "name" string` }, 400)
       }
-      if (marker.includes('/') || marker.includes('\\') || marker.includes('\0')) {
+      if (
+        marker.includes('/') ||
+        marker.includes('\\') ||
+        marker.includes('\0') ||
+        marker === '..' ||
+        marker === '.'
+      ) {
         return c.json({ error: `Marker "${marker}" must be a bare filename` }, 400)
       }
       if (entry.processNames !== undefined) {
