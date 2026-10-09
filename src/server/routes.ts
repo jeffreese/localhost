@@ -355,6 +355,7 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
     const body = await c.req.json<{ name?: string; collapsed?: boolean }>()
 
     let found = false
+    let duplicateName = false
 
     await updateConfig((config) => {
       const group = config.groupConfig.groups.find((g) => g.id === groupId)
@@ -362,7 +363,12 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
 
       found = true
       if (body.name !== undefined && typeof body.name === 'string' && body.name.trim()) {
-        group.name = body.name.trim()
+        const trimmed = body.name.trim()
+        if (config.groupConfig.groups.some((g) => g.id !== groupId && g.name === trimmed)) {
+          duplicateName = true
+          return
+        }
+        group.name = trimmed
       }
       if (body.collapsed !== undefined && typeof body.collapsed === 'boolean') {
         group.collapsed = body.collapsed
@@ -371,6 +377,9 @@ export function createApi(healthChecker: HealthChecker, resourceGetter?: Resourc
 
     if (!found) {
       return c.json({ error: 'Group not found' }, 404)
+    }
+    if (duplicateName) {
+      return c.json({ error: 'A group with that name already exists' }, 400)
     }
 
     const config = await readConfig()

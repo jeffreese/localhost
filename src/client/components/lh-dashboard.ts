@@ -219,6 +219,9 @@ export class LhDashboard extends LitElement {
   }
 
   private async handleDeleteGroup(groupId: string) {
+    const group = this.groupConfig.groups.find((g) => g.id === groupId)
+    const name = group?.name ?? 'this group'
+    if (!confirm(`Delete "${name}"? Projects in this group will become ungrouped.`)) return
     await fetch(`/api/groups/${groupId}`, { method: 'DELETE' })
   }
 
@@ -267,7 +270,7 @@ export class LhDashboard extends LitElement {
   private handleGroupDrop(e: DragEvent, groupId: string | null) {
     e.preventDefault()
     if (!this.draggedId) return
-    this.handleAssignGroup(this.draggedId, groupId)
+    this.handleAssignGroup(this.draggedId, groupId).catch(() => {})
   }
 
   private renderProjectCard(project: Project) {
@@ -337,8 +340,13 @@ export class LhDashboard extends LitElement {
                 : html`
                 <h2
                   class="text-primary font-medium text-sm cursor-pointer"
+                  tabindex="0"
                   @dblclick=${() => this.startEditGroup(group.id, group.name)}
-                  title="Double-click to rename"
+                  @keydown=${(e: KeyboardEvent) => {
+                    if (e.key === 'Enter' || e.key === 'F2')
+                      this.startEditGroup(group.id, group.name)
+                  }}
+                  title="Double-click or press Enter to rename"
                 >${group.name}</h2>
               `
             }

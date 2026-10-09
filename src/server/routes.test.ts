@@ -658,6 +658,22 @@ describe('routes', () => {
       })
     })
 
+    it('PATCH /api/groups/:id rejects duplicate name on rename', async () => {
+      mockConfig.groupConfig.groups = [
+        { id: 'g1', name: 'Frontend', collapsed: false },
+        { id: 'g2', name: 'Backend', collapsed: false },
+      ]
+      const res = await app.request('/api/groups/g2', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Frontend' }),
+      })
+      expect(res.status).toBe(400)
+      const body = await res.json()
+      expect(body.error).toContain('already exists')
+      expect(mockConfig.groupConfig.groups[1].name).toBe('Backend')
+    })
+
     it('PATCH /api/groups/:id returns 404 for unknown group', async () => {
       const res = await app.request('/api/groups/nonexistent', {
         method: 'PATCH',
