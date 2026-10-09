@@ -47,14 +47,14 @@ Single `setInterval` (5s) coordinating periodic tasks:
 ### Frontend (src/client/)
 
 Lit components with light DOM (global Tailwind styling):
-- `<lh-dashboard>` — Root component. Filter, sort, scan, project grid, console drawer.
-- `<lh-project-card>` — Status, start/stop, port links, console toggle, visibility menu, health indicator, resource usage.
+- `<lh-dashboard>` — Root component. Filter, sort, scan, project grid, group management, console drawer.
+- `<lh-project-card>` — Status, start/stop, port links, console toggle, visibility/group menu, health indicator, resource usage.
 - `<lh-port-table>` — Active ports overview. HTTP ports clickable, TCP ports informational.
 - `<lh-config-panel>` — Hidden/ignored lists, restore actions.
 - `<lh-console>` — Bottom drawer for process logs. ANSI stripping.
 
 Reactive stores (one per domain):
-- **ProjectStore** — Project list, visibility filtering, SSE subscriptions
+- **ProjectStore** — Project list, visibility filtering, group config, SSE subscriptions
 - **UIStore** — Filter, sort, panel state, custom order
 - **ConsoleStore** — Log buffer per project, open/close state, disk hydration
 

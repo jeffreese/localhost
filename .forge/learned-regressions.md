@@ -58,3 +58,13 @@ Bug patterns discovered during development. The `/crucible:review` agent checks 
 **Occurrences:** 2 (PR #45, PR #46)
 **Pattern:** A function sets a flag expecting another component to clear it on a future cycle, but that component may never observe the flagged entity. E.g., `stopProject` sets a stop flag relying on the poller to clear it, but if the poller never had the project in its previous state, no diff entry is generated and the flag leaks permanently. The flag corrupts future classifications.
 **Fix:** Clear the flag at the call site as the authoritative path. If the downstream consumer also clears it, that's belt-and-suspenders — the call site must not depend on it.
+
+## convention-create-update-validation-parity
+**Occurrences:** 1 (PR #59)
+**Pattern:** A CREATE endpoint validates a constraint (e.g., duplicate name check) but the UPDATE/PATCH endpoint for the same resource omits it. The mismatch allows the invariant to be violated through the update path.
+**Fix:** When adding validation to a create handler, immediately check whether the update handler enforces the same constraint. Uniqueness, format, and referential integrity checks must be symmetric.
+
+## behavior-destructive-ui-without-confirmation
+**Occurrences:** 1 (PR #59)
+**Pattern:** A destructive UI action (delete, unassign-all, clear) fires immediately on click without a confirmation dialog. The no-permanent-deletion rule covers data, but group deletion destroys the group entity and all assignments in one unrecoverable click.
+**Fix:** Gate destructive actions behind `window.confirm()` or an undo mechanism, especially when the action has cascading side effects (e.g., unassigning all projects from a deleted group).

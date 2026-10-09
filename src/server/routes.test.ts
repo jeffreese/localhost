@@ -589,4 +589,197 @@ describe('routes', () => {
       expect(healthChecker.stopChecking).not.toHaveBeenCalled()
     })
   })
+
+  describe('project groups', () => {
+    beforeEach(() => {
+      resetConfig()
+      vi.mocked(broadcast).mockClear()
+    })
+
+    it('GET /api/groups returns empty group config', async () => {
+      const res = await app.request('/api/groups')
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body).toEqual({ groups: [], assignments: {} })
+    })
+
+    it('POST /api/groups creates a group', async () => {
+      const res = await app.request('/api/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Frontend' }),
+      })
+      expect(res.status).toBe(201)
+      const body = await res.json()
+      expect(body.name).toBe('Frontend')
+      expect(body.collapsed).toBe(false)
+      expect(body.id).toBeDefined()
+      expect(mockConfig.groupConfig.groups).toHaveLength(1)
+      expect(broadcast).toHaveBeenCalledWith({
+        type: 'groups-changed',
+        data: { groups: mockConfig.groupConfig },
+      })
+    })
+
+    it('POST /api/groups rejects empty name', async () => {
+      const res = await app.request('/api/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '' }),
+      })
+      expect(res.status).toBe(400)
+    })
+
+    it('POST /api/groups rejects duplicate name', async () => {
+      mockConfig.groupConfig.groups = [{ id: 'g1', name: 'Frontend', collapsed: false }]
+      const res = await app.request('/api/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Frontend' }),
+      })
+      expect(res.status).toBe(400)
+      const body = await res.json()
+      expect(body.error).toContain('already exists')
+    })
+
+    it('PATCH /api/groups/:id updates group name and collapsed', async () => {
+      mockConfig.groupConfig.groups = [{ id: 'g1', name: 'Frontend', collapsed: false }]
+      const res = await app.request('/api/groups/g1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'UI', collapsed: true }),
+      })
+      expect(res.status).toBe(200)
+      expect(mockConfig.groupConfig.groups[0].name).toBe('UI')
+      expect(mockConfig.groupConfig.groups[0].collapsed).toBe(true)
+      expect(broadcast).toHaveBeenCalledWith({
+        type: 'groups-changed',
+        data: { groups: mockConfig.groupConfig },
+      })
+    })
+
+    it('PATCH /api/groups/:id rejects duplicate name on rename', async () => {
+      mockConfig.groupConfig.groups = [
+        { id: 'g1', name: 'Frontend', collapsed: false },
+        { id: 'g2', name: 'Backend', collapsed: false },
+      ]
+      const res = await app.request('/api/groups/g2', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Frontend' }),
+      })
+      expect(res.status).toBe(400)
+      const body = await res.json()
+      expect(body.error).toContain('already exists')
+      expect(mockConfig.groupConfig.groups[1].name).toBe('Backend')
+    })
+
+    it('PATCH /api/groups/:id returns 404 for unknown group', async () => {
+      const res = await app.request('/api/groups/nonexistent', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'New Name' }),
+      })
+      expect(res.status).toBe(404)
+    })
+
+    it('DELETE /api/groups/:id removes group and unassigns projects', async () => {
+      mockConfig.groupConfig.groups = [{ id: 'g1', name: 'Frontend', collapsed: false }]
+      mockConfig.groupConfig.assignments = {
+        '/tmp/app-a': 'g1',
+        '/tmp/app-b': 'g1',
+        '/tmp/app-c': 'g2',
+      }
+      const res = await app.request('/api/groups/g1', { method: 'DELETE' })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.deleted).toBe(true)
+      expect(body.unassignedCount).toBe(2)
+      expect(mockConfig.groupConfig.groups).toHaveLength(0)
+      expect(mockConfig.groupConfig.assignments['/tmp/app-a']).toBeUndefined()
+      expect(mockConfig.groupConfig.assignments['/tmp/app-b']).toBeUndefined()
+      expect(mockConfig.groupConfig.assignments['/tmp/app-c']).toBe('g2')
+    })
+
+    it('DELETE /api/groups/:id returns 404 for unknown group', async () => {
+      const res = await app.request('/api/groups/nonexistent', { method: 'DELETE' })
+      expect(res.status).toBe(404)
+    })
+
+    it('PATCH /api/projects/:id assigns group', async () => {
+      mockConfig.groupConfig.groups = [{ id: 'g1', name: 'Frontend', collapsed: false }]
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group: 'g1' }),
+      })
+      expect(res.status).toBe(200)
+      expect(mockConfig.groupConfig.assignments['/tmp/my-app']).toBe('g1')
+      expect(broadcast).toHaveBeenCalledWith({
+        type: 'groups-changed',
+        data: { groups: mockConfig.groupConfig },
+      })
+    })
+
+    it('PATCH /api/projects/:id unassigns group with null', async () => {
+      mockConfig.groupConfig.assignments = { '/tmp/my-app': 'g1' }
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group: null }),
+      })
+      expect(res.status).toBe(200)
+      expect(mockConfig.groupConfig.assignments['/tmp/my-app']).toBeUndefined()
+    })
+
+    it('PATCH /api/projects/:id ignores assignment to nonexistent group', async () => {
+      const res = await app.request('/api/projects/%2Ftmp%2Fmy-app', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group: 'nonexistent' }),
+      })
+      expect(res.status).toBe(200)
+      expect(mockConfig.groupConfig.assignments['/tmp/my-app']).toBeUndefined()
+    })
+
+    it('GET /api/projects includes group field from assignments', async () => {
+      resetConfig({
+        projects: {
+          '/tmp/my-app': {
+            name: 'my-app',
+            path: '/tmp/my-app',
+            packageManager: 'pnpm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+        },
+        groupConfig: {
+          groups: [{ id: 'g1', name: 'Frontend', collapsed: false }],
+          assignments: { '/tmp/my-app': 'g1' },
+        },
+      })
+      const res = await app.request('/api/projects')
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body[0].group).toBe('g1')
+    })
+
+    it('GET /api/projects returns null group for unassigned project', async () => {
+      resetConfig({
+        projects: {
+          '/tmp/my-app': {
+            name: 'my-app',
+            path: '/tmp/my-app',
+            packageManager: 'pnpm',
+            devScript: 'dev',
+            githubUrl: null,
+          },
+        },
+      })
+      const res = await app.request('/api/projects')
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body[0].group).toBeNull()
+    })
+  })
 })

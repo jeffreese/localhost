@@ -37,6 +37,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     crashInfo: null,
     healthStatus: null,
     resourceUsage: null,
+    group: null,
     ...overrides,
   }
 }
@@ -339,6 +340,54 @@ describe('ProjectStore health status', () => {
     const projects = ProjectStore.getAll()
     expect(projects[0].resourceUsage?.cpu).toBe(10)
     expect(projects[1].resourceUsage?.cpu).toBe(3)
+    ProjectStore.destroy()
+  })
+
+  it('groups-changed updates project group assignments', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([makeProject({ id: 'app1' }), makeProject({ id: 'app2' })])
+
+    dispatchSSE('groups-changed', {
+      groups: {
+        groups: [{ id: 'g1', name: 'Frontend', collapsed: false }],
+        assignments: { app1: 'g1' },
+      },
+    })
+
+    const projects = ProjectStore.getAll()
+    expect(projects[0].group).toBe('g1')
+    expect(projects[1].group).toBeNull()
+    ProjectStore.destroy()
+  })
+
+  it('groups-changed updates groupConfig in store', () => {
+    ProjectStore.init()
+    ProjectStore.setGroupConfig({ groups: [], assignments: {} })
+
+    dispatchSSE('groups-changed', {
+      groups: {
+        groups: [{ id: 'g1', name: 'Frontend', collapsed: false }],
+        assignments: {},
+      },
+    })
+
+    expect(ProjectStore.getGroupConfig().groups).toHaveLength(1)
+    expect(ProjectStore.getGroupConfig().groups[0].name).toBe('Frontend')
+    ProjectStore.destroy()
+  })
+
+  it('groups-changed clears assignments for removed groups', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([makeProject({ id: 'app1', group: 'g1' })])
+
+    dispatchSSE('groups-changed', {
+      groups: {
+        groups: [],
+        assignments: {},
+      },
+    })
+
+    expect(ProjectStore.getAll()[0].group).toBeNull()
     ProjectStore.destroy()
   })
 })

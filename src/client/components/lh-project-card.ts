@@ -1,4 +1,4 @@
-import type { Project, Visibility } from '@shared/types'
+import type { GroupConfig, Project, Visibility } from '@shared/types'
 import { LitElement, html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { ConsoleStore } from '../stores/console-store'
@@ -7,6 +7,7 @@ import { ProjectStore } from '../stores/project-store'
 @customElement('lh-project-card')
 export class LhProjectCard extends LitElement {
   @property({ type: Object }) project!: Project
+  @property({ type: Array }) groups: GroupConfig['groups'] = []
   @state() private menuOpen = false
 
   private closeMenuBound = (e: MouseEvent) => {
@@ -104,6 +105,13 @@ export class LhProjectCard extends LitElement {
     }
   }
 
+  private handleGroupAssign(groupId: string | null) {
+    this.menuOpen = false
+    this.dispatchEvent(
+      new CustomEvent('assign-group', { detail: { groupId }, bubbles: true, composed: true }),
+    )
+  }
+
   private async handleVisibility(visibility: Visibility) {
     this.menuOpen = false
     ProjectStore.updateVisibility(this.project.id, visibility)
@@ -140,7 +148,33 @@ export class LhProjectCard extends LitElement {
               ${
                 this.menuOpen
                   ? html`
-                <div class="absolute right-0 top-full mt-xs bg-surface-elevated border border-border rounded-md py-xs z-10 min-w-[120px]">
+                <div class="absolute right-0 top-full mt-xs bg-surface-elevated border border-border rounded-md py-xs z-10 min-w-[160px]">
+                  ${
+                    this.groups.length > 0
+                      ? html`
+                    <div class="px-sm py-xs text-xs text-muted border-b border-border mb-xs">Move to group</div>
+                    ${this.groups.map(
+                      (g) => html`
+                      <button
+                        class="block w-full text-left px-sm py-xs text-xs ${this.project.group === g.id ? 'text-accent' : 'text-secondary'} hover:text-primary hover:bg-surface-overlay cursor-pointer"
+                        @click=${() => this.handleGroupAssign(g.id)}
+                      >${g.name}${this.project.group === g.id ? ' ✓' : ''}</button>
+                    `,
+                    )}
+                    ${
+                      this.project.group !== null
+                        ? html`
+                      <button
+                        class="block w-full text-left px-sm py-xs text-xs text-secondary hover:text-primary hover:bg-surface-overlay cursor-pointer"
+                        @click=${() => this.handleGroupAssign(null)}
+                      >Remove from group</button>
+                    `
+                        : ''
+                    }
+                    <div class="border-t border-border mt-xs pt-xs"></div>
+                  `
+                      : ''
+                  }
                   <button
                     class="block w-full text-left px-sm py-xs text-xs text-secondary hover:text-primary hover:bg-surface-overlay cursor-pointer"
                     @click=${() => this.handleVisibility('hidden')}

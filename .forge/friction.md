@@ -64,3 +64,8 @@
 **Friction:** Crucible required 2 rounds — R1: documentation claimed spawned processes "survive restarts" but piped stdio means children get SIGPIPE/EPIPE when parent exits; dead getActiveProcesses export left behind.
 **Root cause:** The documentation was written for the intent (full decoupling) rather than the actual mechanism (pipes still create a dependency). The dead export was missed during removal of killAllProcessGroups — the function was in a different file than the one being edited.
 **Category:** crucible-rework
+
+## 2026-10-09 — feat/project-groups
+**Friction:** Crucible required 2 rounds — R1: PATCH /groups/:id missing duplicate-name check (create/update validation parity), group deletion without confirmation (destructive action), rename only via double-click (WCAG keyboard a11y), fire-and-forget promise without catch, missing test.
+**Root cause:** The PATCH endpoint mirrored the POST handler's structure but not its validation constraints. The destructive action was a one-click delete with cascading unassignment. The rename discoverability was mouse-only.
+**Category:** crucible-rework
