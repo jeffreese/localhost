@@ -1,5 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BackgroundPoller, broadcastDiff, diffListeners } from './background-poller'
+import {
+  BackgroundPoller,
+  aggregateByProject,
+  broadcastDiff,
+  diffListeners,
+  parsePsOutput,
+} from './background-poller'
+import type { ResourceMap } from './background-poller'
+
+type ExecFileCallback = (err: Error | null, stdout: string, stderr: string) => void
+
+const mockExecFile = vi.fn(
+  (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+    cb(null, '', '')
+  },
+)
+vi.mock('node:child_process', () => ({
+  execFile: (...args: unknown[]) =>
+    mockExecFile(...(args as [string, string[], unknown, ExecFileCallback])),
+}))
 
 vi.mock('./process-manager', () => ({
   detectAllListeners: vi.fn().mockResolvedValue({}),
@@ -745,5 +764,322 @@ describe('BackgroundPoller port type cache', () => {
 
     expect(getPortType(3000)).toBeUndefined()
     consoleSpy.mockRestore()
+  })
+})
+
+describe('parsePsOutput', () => {
+  it('parses standard ps output with header', () => {
+    const output = `  PID  %CPU   RSS
+  123   2.5 51200
+  456   0.0  8192`
+    const entries = parsePsOutput(output)
+    expect(entries).toEqual([
+      { pid: 123, cpu: 2.5, rss: 51200 * 1024 },
+      { pid: 456, cpu: 0.0, rss: 8192 * 1024 },
+    ])
+  })
+
+  it('skips malformed lines', () => {
+    const output = `  PID  %CPU   RSS
+  123   2.5 51200
+  bad   line
+  456   0.0  8192`
+    const entries = parsePsOutput(output)
+    expect(entries).toHaveLength(2)
+    expect(entries[0].pid).toBe(123)
+    expect(entries[1].pid).toBe(456)
+  })
+
+  it('returns empty array for header-only output', () => {
+    const output = '  PID  %CPU   RSS\n'
+    expect(parsePsOutput(output)).toEqual([])
+  })
+
+  it('returns empty array for empty string', () => {
+    expect(parsePsOutput('')).toEqual([])
+  })
+
+  it('handles extra whitespace in output', () => {
+    const output = `  PID  %CPU   RSS
+    789    12.3    102400  `
+    const entries = parsePsOutput(output)
+    expect(entries).toEqual([{ pid: 789, cpu: 12.3, rss: 102400 * 1024 }])
+  })
+
+  it('converts RSS from KB to bytes', () => {
+    const output = `  PID  %CPU   RSS
+  1   0.0  1024`
+    const entries = parsePsOutput(output)
+    expect(entries[0].rss).toBe(1024 * 1024)
+  })
+})
+
+describe('aggregateByProject', () => {
+  it('aggregates CPU and memory across multiple PIDs for a project', () => {
+    const listeners = {
+      proj: [
+        { pid: 1, port: 3000 },
+        { pid: 2, port: 3001 },
+      ],
+    }
+    const entries = [
+      { pid: 1, cpu: 5.0, rss: 1024 },
+      { pid: 2, cpu: 3.0, rss: 2048 },
+    ]
+    const result = aggregateByProject(listeners, entries)
+    expect(result.proj).toBeDefined()
+    expect(result.proj.cpu).toBe(8.0)
+    expect(result.proj.memory).toBe(3072)
+    expect(result.proj.pids).toEqual([1, 2])
+  })
+
+  it('deduplicates PIDs within a project', () => {
+    const listeners = {
+      proj: [
+        { pid: 1, port: 3000 },
+        { pid: 1, port: 3001 },
+      ],
+    }
+    const entries = [{ pid: 1, cpu: 5.0, rss: 1024 }]
+    const result = aggregateByProject(listeners, entries)
+    expect(result.proj.cpu).toBe(5.0)
+    expect(result.proj.memory).toBe(1024)
+    expect(result.proj.pids).toEqual([1])
+  })
+
+  it('skips projects with no matching ps entries', () => {
+    const listeners = { proj: [{ pid: 99, port: 3000 }] }
+    const entries = [{ pid: 1, cpu: 5.0, rss: 1024 }]
+    const result = aggregateByProject(listeners, entries)
+    expect(result.proj).toBeUndefined()
+  })
+
+  it('handles multiple projects', () => {
+    const listeners = {
+      a: [{ pid: 1, port: 3000 }],
+      b: [{ pid: 2, port: 4000 }],
+    }
+    const entries = [
+      { pid: 1, cpu: 10.0, rss: 5000 },
+      { pid: 2, cpu: 20.0, rss: 8000 },
+    ]
+    const result = aggregateByProject(listeners, entries)
+    expect(result.a.cpu).toBe(10.0)
+    expect(result.b.cpu).toBe(20.0)
+  })
+
+  it('returns empty object for empty listeners', () => {
+    expect(aggregateByProject({}, [{ pid: 1, cpu: 5.0, rss: 1024 }])).toEqual({})
+  })
+
+  it('includes sampledAt timestamp', () => {
+    const listeners = { proj: [{ pid: 1, port: 3000 }] }
+    const entries = [{ pid: 1, cpu: 5.0, rss: 1024 }]
+    const result = aggregateByProject(listeners, entries)
+    expect(result.proj.sampledAt).toBeDefined()
+    expect(new Date(result.proj.sampledAt).getTime()).not.toBeNaN()
+  })
+})
+
+describe('BackgroundPoller resource sampling', () => {
+  let poller: BackgroundPoller
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    poller = new BackgroundPoller()
+    mockDetect.mockReset().mockResolvedValue({})
+    mockProbe.mockReset().mockResolvedValue('http')
+    mockIsStopping.mockReset().mockReturnValue(false)
+    mockClearStopping.mockReset()
+    mockExecFile
+      .mockReset()
+      .mockImplementation((_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        cb(null, '', '')
+      })
+    clearPortTypeCache()
+  })
+
+  afterEach(() => {
+    poller.stop()
+    vi.useRealTimers()
+  })
+
+  it('samples resources on every 3rd tick', async () => {
+    const psOutput = '  PID  %CPU   RSS\n  100   5.0 10240'
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        cb(null, psOutput, '')
+      },
+    )
+    mockDetect.mockResolvedValue({ proj: [{ pid: 100, port: 3000 }] })
+
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(100) // tick 1
+    expect(mockExecFile).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(100) // tick 2
+    expect(mockExecFile).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(100) // tick 3
+    expect(mockExecFile).toHaveBeenCalledTimes(1)
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'ps',
+      ['-o', 'pid,pcpu,rss', '-p', '100'],
+      expect.objectContaining({ timeout: 5000 }),
+      expect.any(Function),
+    )
+
+    const usage = poller.getResourceUsage()
+    expect(usage.proj).toBeDefined()
+    expect(usage.proj.cpu).toBe(5.0)
+    expect(usage.proj.memory).toBe(10240 * 1024)
+  })
+
+  it('does not call ps when no PIDs are running', async () => {
+    mockDetect.mockResolvedValue({})
+
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(300) // tick 3
+    expect(mockExecFile).not.toHaveBeenCalled()
+    expect(poller.getResourceUsage()).toEqual({})
+  })
+
+  it('clears resource usage when all projects stop', async () => {
+    const psOutput = '  PID  %CPU   RSS\n  100   5.0 10240'
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        cb(null, psOutput, '')
+      },
+    )
+    mockDetect.mockResolvedValue({ proj: [{ pid: 100, port: 3000 }] })
+
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(300) // tick 3 — samples
+    expect(poller.getResourceUsage().proj).toBeDefined()
+
+    mockDetect.mockResolvedValue({})
+    await vi.advanceTimersByTimeAsync(300) // tick 6 — samples empty
+    expect(poller.getResourceUsage()).toEqual({})
+  })
+
+  it('handles ps errors gracefully', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        cb(new Error('ps failed'), '', '')
+      },
+    )
+    mockDetect.mockResolvedValue({ proj: [{ pid: 100, port: 3000 }] })
+
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(300) // tick 3
+
+    // ps returns empty on error, so no entries parsed — resource usage stays empty
+    expect(poller.getResourceUsage()).toEqual({})
+    consoleSpy.mockRestore()
+  })
+
+  it('calls onResourceUpdate callback with cloned data', async () => {
+    const updates: ResourceMap[] = []
+    poller.setOnResourceUpdate((resources) => {
+      updates.push(resources)
+    })
+
+    const psOutput = '  PID  %CPU   RSS\n  100   5.0 10240'
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        cb(null, psOutput, '')
+      },
+    )
+    mockDetect.mockResolvedValue({ proj: [{ pid: 100, port: 3000 }] })
+
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(300) // tick 3
+
+    expect(updates).toHaveLength(1)
+    expect(updates[0].proj.cpu).toBe(5.0)
+
+    // Verify clone — mutating callback data shouldn't affect internal state
+    updates[0].proj.cpu = 999
+    expect(poller.getResourceUsage().proj.cpu).toBe(5.0)
+  })
+
+  it('catches synchronous onResourceUpdate errors', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    poller.setOnResourceUpdate(() => {
+      throw new Error('callback boom')
+    })
+
+    const psOutput = '  PID  %CPU   RSS\n  100   5.0 10240'
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        cb(null, psOutput, '')
+      },
+    )
+    mockDetect.mockResolvedValue({ proj: [{ pid: 100, port: 3000 }] })
+
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(300) // tick 3
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[BackgroundPoller] onResourceUpdate error:',
+      expect.any(Error),
+    )
+    consoleSpy.mockRestore()
+  })
+
+  it('catches async onResourceUpdate errors', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    poller.setOnResourceUpdate(() => Promise.reject(new Error('async callback boom')))
+
+    const psOutput = '  PID  %CPU   RSS\n  100   5.0 10240'
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        cb(null, psOutput, '')
+      },
+    )
+    mockDetect.mockResolvedValue({ proj: [{ pid: 100, port: 3000 }] })
+
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(300)
+    await vi.advanceTimersByTimeAsync(0) // flush microtask
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[BackgroundPoller] onResourceUpdate error:',
+      expect.any(Error),
+    )
+    consoleSpy.mockRestore()
+  })
+
+  it('getResourceUsage returns a clone', async () => {
+    const psOutput = '  PID  %CPU   RSS\n  100   5.0 10240'
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        cb(null, psOutput, '')
+      },
+    )
+    mockDetect.mockResolvedValue({ proj: [{ pid: 100, port: 3000 }] })
+
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(300) // tick 3
+
+    const usage = poller.getResourceUsage()
+    usage.proj.cpu = 999
+    expect(poller.getResourceUsage().proj.cpu).toBe(5.0)
+  })
+
+  it('samples every 3rd tick continuously', async () => {
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        cb(null, '  PID  %CPU   RSS\n  100   1.0 1024', '')
+      },
+    )
+    mockDetect.mockResolvedValue({ proj: [{ pid: 100, port: 3000 }] })
+
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(600) // ticks 1-6
+
+    // ps called on ticks 3 and 6
+    expect(mockExecFile).toHaveBeenCalledTimes(2)
   })
 })

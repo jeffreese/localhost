@@ -12,6 +12,31 @@ class FakeChild extends EventEmitter {
 
 const mockActiveProcesses = new Map<string, FakeChild>()
 
+const { mockExecFileRef } = vi.hoisted(() => {
+  const mockExecFileRef: {
+    current: (
+      cmd: string,
+      args: string[],
+      opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => void
+  } = {
+    current: (_cmd, _args, _opts, cb) => cb(null, '', ''),
+  }
+  return { mockExecFileRef }
+})
+vi.mock('node:child_process', () => ({
+  execFile: vi.fn(
+    (
+      cmd: string,
+      args: string[],
+      opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => mockExecFileRef.current(cmd, args, opts, cb),
+  ),
+  spawn: vi.fn(),
+}))
+
 vi.mock('./log-store', () => ({
   closeAll: vi.fn().mockResolvedValue(undefined),
 }))
@@ -528,5 +553,32 @@ describe('poller lifecycle', () => {
       type: 'health-changed',
       data: { projectId: 'myApp', status: 'unhealthy', responseTime: null },
     })
+  })
+
+  it('broadcasts resource-update SSE events on 3rd tick', async () => {
+    vi.useFakeTimers()
+    const { detectAllListeners } = await import('./process-manager')
+    const mockDetect = vi.mocked(detectAllListeners)
+    mockPortTypeCache.clear()
+
+    mockExecFileRef.current = (_cmd, _args, _opts, cb) => {
+      cb(null, '  PID  %CPU   RSS\n  100   12.5 51200', '')
+    }
+
+    mockDetect.mockResolvedValue({ myApp: [{ pid: 100, port: 3000 }] })
+    mockBroadcast.mockClear()
+
+    poller.start(100)
+    await vi.advanceTimersByTimeAsync(300) // tick 3 triggers sampling
+
+    expect(mockBroadcast).toHaveBeenCalledWith({
+      type: 'resource-update',
+      data: { projectId: 'myApp', cpu: 12.5, memory: 51200 * 1024 },
+    })
+
+    poller.stop()
+    mockExecFileRef.current = (_cmd, _args, _opts, cb) => cb(null, '', '')
+    mockPortTypeCache.clear()
+    vi.useRealTimers()
   })
 })

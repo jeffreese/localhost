@@ -36,6 +36,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     spawnedByUs: false,
     crashInfo: null,
     healthStatus: null,
+    resourceUsage: null,
     ...overrides,
   }
 }
@@ -253,6 +254,91 @@ describe('ProjectStore health status', () => {
     const projects = ProjectStore.getAll()
     expect(projects[0].healthStatus).toBe('unhealthy')
     expect(projects[1].healthStatus).toBe('healthy')
+    ProjectStore.destroy()
+  })
+
+  it('updates resourceUsage on resource-update event', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([makeProject({ id: 'app1', processState: 'running' })])
+
+    dispatchSSE('resource-update', { projectId: 'app1', cpu: 12.5, memory: 51200 * 1024 })
+
+    const projects = ProjectStore.getAll()
+    expect(projects[0].resourceUsage).not.toBeNull()
+    expect(projects[0].resourceUsage?.cpu).toBe(12.5)
+    expect(projects[0].resourceUsage?.memory).toBe(51200 * 1024)
+    ProjectStore.destroy()
+  })
+
+  it('clears resourceUsage on process-stopped', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([
+      makeProject({
+        id: 'app1',
+        processState: 'running',
+        resourceUsage: { cpu: 5, memory: 1024, pids: [100], sampledAt: new Date().toISOString() },
+      }),
+    ])
+
+    dispatchSSE('process-stopped', { projectId: 'app1' })
+
+    expect(ProjectStore.getAll()[0].resourceUsage).toBeNull()
+    ProjectStore.destroy()
+  })
+
+  it('clears resourceUsage on process-crashed', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([
+      makeProject({
+        id: 'app1',
+        processState: 'running',
+        resourceUsage: { cpu: 5, memory: 1024, pids: [100], sampledAt: new Date().toISOString() },
+      }),
+    ])
+
+    dispatchSSE('process-crashed', {
+      projectId: 'app1',
+      exitCode: 1,
+      signal: null,
+      timestamp: new Date().toISOString(),
+    })
+
+    expect(ProjectStore.getAll()[0].resourceUsage).toBeNull()
+    ProjectStore.destroy()
+  })
+
+  it('clears resourceUsage on process-started', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([
+      makeProject({
+        id: 'app1',
+        processState: 'stopped',
+        resourceUsage: { cpu: 5, memory: 1024, pids: [100], sampledAt: new Date().toISOString() },
+      }),
+    ])
+
+    dispatchSSE('process-started', { projectId: 'app1' })
+
+    expect(ProjectStore.getAll()[0].resourceUsage).toBeNull()
+    ProjectStore.destroy()
+  })
+
+  it('does not affect other projects on resource-update', () => {
+    ProjectStore.init()
+    ProjectStore.setProjects([
+      makeProject({ id: 'app1', processState: 'running' }),
+      makeProject({
+        id: 'app2',
+        processState: 'running',
+        resourceUsage: { cpu: 3, memory: 512, pids: [200], sampledAt: new Date().toISOString() },
+      }),
+    ])
+
+    dispatchSSE('resource-update', { projectId: 'app1', cpu: 10, memory: 2048 })
+
+    const projects = ProjectStore.getAll()
+    expect(projects[0].resourceUsage?.cpu).toBe(10)
+    expect(projects[1].resourceUsage?.cpu).toBe(3)
     ProjectStore.destroy()
   })
 })

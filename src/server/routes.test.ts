@@ -74,7 +74,7 @@ vi.mock('./health-checker', () => ({
   }),
 }))
 
-const { default: app, healthChecker } = await import('./index')
+const { default: app, healthChecker, poller } = await import('./index')
 const { startProject } = await import('./process-manager')
 const { clearPortTypeCache, setPortType } = await import('./port-probe')
 const { broadcast } = await import('./sse')
@@ -457,6 +457,40 @@ describe('routes', () => {
       const body = await res.json()
 
       expect(body.statuses['/tmp/app']).not.toHaveProperty('responseTime')
+    })
+  })
+
+  describe('GET /api/resources', () => {
+    it('returns empty usage when no resources sampled', async () => {
+      const res = await app.request('/api/resources')
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body).toEqual({ usage: {} })
+    })
+
+    it('returns populated resource usage from poller', async () => {
+      const mockUsage = {
+        '/tmp/my-app': {
+          cpu: 12.5,
+          memory: 52428800,
+          pids: [100, 101],
+          sampledAt: '2026-10-08T20:00:00.000Z',
+        },
+      }
+      const spy = vi.spyOn(poller, 'getResourceUsage').mockReturnValue(mockUsage)
+
+      const res = await app.request('/api/resources')
+      expect(res.status).toBe(200)
+      const body = await res.json()
+
+      expect(body.usage['/tmp/my-app']).toEqual({
+        cpu: 12.5,
+        memory: 52428800,
+        pids: [100, 101],
+        sampledAt: '2026-10-08T20:00:00.000Z',
+      })
+
+      spy.mockRestore()
     })
   })
 

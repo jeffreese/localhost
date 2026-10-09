@@ -15,10 +15,19 @@ export const port = 7769
 
 const poller = new BackgroundPoller()
 const healthChecker = new HealthChecker()
-app.route('/api', createApi(healthChecker))
+app.route('/api', createApi(healthChecker, poller))
 
 healthChecker.setOnChange((projectId, status, responseTime) => {
   broadcast({ type: 'health-changed', data: { projectId, status, responseTime } })
+})
+
+poller.setOnResourceUpdate((resources) => {
+  for (const [projectId, usage] of Object.entries(resources)) {
+    broadcast({
+      type: 'resource-update',
+      data: { projectId, cpu: usage.cpu, memory: usage.memory },
+    })
+  }
 })
 
 poller.setOnDiff(async (diff, currentListeners) => {

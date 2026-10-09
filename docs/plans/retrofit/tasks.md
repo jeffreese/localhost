@@ -91,11 +91,11 @@ date: 2026-10-05
 
 ## Epic 10: Resource Monitoring
 
-- [ ] 10.1 Add resource sampling to poller: every 3rd tick, `ps -o pid,pcpu,rss` for all running PIDs.
-- [ ] 10.2 Aggregate CPU/memory per project across process group.
-- [ ] 10.3 Broadcast `resource-update` SSE events.
-- [ ] 10.4 Add `GET /api/resources` endpoint.
-- [ ] 10.5 Update `<lh-project-card>`: display CPU % and memory.
+- [x] 10.1 Add resource sampling to poller: every 3rd tick, `ps -o pid,pcpu,rss` for all running PIDs.
+- [x] 10.2 Aggregate CPU/memory per project across process group.
+- [x] 10.3 Broadcast `resource-update` SSE events.
+- [x] 10.4 Add `GET /api/resources` endpoint.
+- [x] 10.5 Update `<lh-project-card>`: display CPU % and memory.
 
 ## Epic 11: Project Groups
 

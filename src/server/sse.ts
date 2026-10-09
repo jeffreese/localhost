@@ -23,6 +23,10 @@ export type SSEEvent =
       type: 'health-changed'
       data: { projectId: string; status: HealthStatus | null; responseTime: number | null }
     }
+  | {
+      type: 'resource-update'
+      data: { projectId: string; cpu: number; memory: number }
+    }
 
 type SSEClient = {
   send: (event: SSEEvent, id: number) => void

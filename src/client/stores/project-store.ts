@@ -27,6 +27,7 @@ function handleProcessStarted(data: unknown) {
           spawnedByUs: true,
           crashInfo: null,
           healthStatus: null,
+          resourceUsage: null,
         }
       : p,
   )
@@ -37,7 +38,13 @@ function handleProcessStopped(data: unknown) {
   const { projectId } = data as { projectId: string }
   projects = projects.map((p) =>
     p.id === projectId
-      ? { ...p, processState: 'stopped' as const, listeners: [], healthStatus: null }
+      ? {
+          ...p,
+          processState: 'stopped' as const,
+          listeners: [],
+          healthStatus: null,
+          resourceUsage: null,
+        }
       : p,
   )
   notify()
@@ -66,6 +73,7 @@ function handleProcessCrashed(data: unknown) {
           listeners: [],
           crashInfo: { timestamp, exitCode, signal },
           healthStatus: null,
+          resourceUsage: null,
         }
       : p,
   )
@@ -106,6 +114,24 @@ function handleHealthChanged(data: unknown) {
   notify()
 }
 
+function handleResourceUpdate(data: unknown) {
+  const { projectId, cpu, memory } = data as { projectId: string; cpu: number; memory: number }
+  projects = projects.map((p) =>
+    p.id === projectId
+      ? {
+          ...p,
+          resourceUsage: {
+            cpu,
+            memory,
+            pids: p.resourceUsage?.pids ?? [],
+            sampledAt: new Date().toISOString(),
+          },
+        }
+      : p,
+  )
+  notify()
+}
+
 function handleProjectUpdated(_data: unknown) {
   // Refetch on next getAll — for now just notify to trigger re-render
   notify()
@@ -125,6 +151,7 @@ export const ProjectStore = {
     on('port-detected', handlePortDetected)
     on('project-updated', handleProjectUpdated)
     on('health-changed', handleHealthChanged)
+    on('resource-update', handleResourceUpdate)
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {})
     }
@@ -138,6 +165,7 @@ export const ProjectStore = {
     off('port-detected', handlePortDetected)
     off('project-updated', handleProjectUpdated)
     off('health-changed', handleHealthChanged)
+    off('resource-update', handleResourceUpdate)
   },
 
   getAll(): Project[] {
