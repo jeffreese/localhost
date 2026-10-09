@@ -59,3 +59,8 @@
 **Friction:** Crucible required 2 rounds — R1: N+1 structuredClone in buildProjectResponse (getResourceUsage() called per project inside .map()), missing test for populated /api/resources response.
 **Root cause:** The getResourceUsage() call was placed inside buildProjectResponse following the same pattern as healthChecker.getStatus() — but getStatus does a cheap shallow spread while getResourceUsage does a full structuredClone. The pattern match was wrong. The missing test is the 7th occurrence of the api-shape-change-missing-consumer-update pattern family — new endpoint with only an empty-state test.
 **Category:** crucible-rework
+
+## 2026-10-08 — fix/decouple-process-lifecycle
+**Friction:** Crucible required 2 rounds — R1: documentation claimed spawned processes "survive restarts" but piped stdio means children get SIGPIPE/EPIPE when parent exits; dead getActiveProcesses export left behind.
+**Root cause:** The documentation was written for the intent (full decoupling) rather than the actual mechanism (pipes still create a dependency). The dead export was missed during removal of killAllProcessGroups — the function was in a different file than the one being edited.
+**Category:** crucible-rework
