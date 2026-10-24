@@ -1,6 +1,11 @@
 {
   "project_name": "localhost",
   "export_date": "2026-10-05",
-  "forge_path": "/Users/jeffreese/Code/forge",
-  "feedback": { "enabled": true }
+  "feedback": {
+    "enabled": true
+  },
+  "tracker": {
+    "type": "purecontext-tasks",
+    "project_id": "434ea51a-1ea0-41e7-829e-d039fbb880e0"
+  }
 }
